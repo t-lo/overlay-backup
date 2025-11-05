@@ -1,0 +1,313 @@
+#!/bin/bash
+# vim:ts=2:et:sw=2:syn=bash
+#
+
+UTIL_IMAGE_DATADIR="data"
+UTIL_IMAGE_WORKDIR=".work"
+
+UTIL_IMAGE_SNAPSHOT_SEPARATOR="snapshot"
+
+UTIL_NETFS_MOUNTFLAG_FILE=".mount-check"
+
+function announce() {
+  echo "#############################  ${@}"
+}
+# --
+
+function snapshot_image_name() {
+  local base="$1"
+  local ts="$(date --rfc-3339=seconds | sed -e 's/ /_/' -e 's/:/-/g' -e 's/+.*//')"
+  echo  "${base}-${UTIL_IMAGE_SNAPSHOT_SEPARATOR}-${ts}"
+}
+# --
+
+function full_image_name() {
+  local base="$1"
+  local ts="$(date --rfc-3339=seconds | sed -e 's/ /_/' -e 's/:/-/g' -e 's/+.*//')"
+  echo  "${base}-${ts}"
+}
+# --
+
+function full_from_snapshot_name() {
+  local snap="$1"
+  echo "${snap%${UTIL_IMAGE_SNAPSHOT_SEPARATOR}*}"
+}
+# --
+
+function sanitise_image_path() {
+  local img="$1"
+  local img_store="$2"
+  echo "${img_store}/$(basename "${img}")"
+}
+# --
+
+function netfs_needs_mounting() {
+  local mountpoint="${1}"
+  [[ ! -f "${mountpoint}/${UTIL_NETFS_MOUNTFLAG_FILE}" ]]
+}
+# --
+
+function mount_netfs() {
+  local uri="${1}"
+  local mountpoint="${2}"
+  local userpass="${3}"
+
+  if netfs_needs_mounting "${mountpoint}" ; then
+    echo "  Mounting net FS to '${mountpoint}'"
+    mkdir -p "${mountpoint}"
+    local opts=( "-o" "seal,${userpass}" "${uri}" "${mountpoint}" )
+    mount.cifs "${opts[@]}"
+    touch "${mountpoint}/${UTIL_NETFS_MOUNTFLAG_FILE}"
+  fi
+}
+# --
+
+function umount_netfs() {
+  local mount_point="$1"
+
+  if mountpoint -q "${mount_point}"; then
+    echo "  Syncing and unmounting NETFS '${mount_point}'"
+    sync --file-system "${mount_point}"/.*
+    umount_loop "${mount_point}"
+  else
+    echo "  NETFS '${mount_point}' not mounted"
+  fi
+}
+# --
+
+function mount_fs_image() {
+  local fs_image="${1}"
+  local mount_point="${2}"
+
+  echo "  Mount '${mount_point}'"
+  mkdir -p "${mount_point}"
+  mount -o loop \
+        -o context='system_u:object_r:httpd_sys_content_t:s0' \
+        "${fs_image}" "${mount_point}"
+
+  if [[ ! -d "${mount_point}/${UTIL_IMAGE_DATADIR}" ]] ; then
+    echo "    ${UTIL_IMAGE_DATADIR} missing in image; creating it."
+    mkdir -p "${mount_point}/${UTIL_IMAGE_DATADIR}"
+  fi
+  if [[ ! -d "${mount_point}/${UTIL_IMAGE_WORKDIR}" ]] ; then
+    echo "    ${UTIL_IMAGE_WORKDIR} missing in image; creating it."
+    mkdir -p "${mount_point}/${UTIL_IMAGE_WORKDIR}"
+  fi
+}
+# --
+
+function umount_loop() {
+  mount_point="$1"
+
+  # Loop until transient "device busy" disappears
+  while mountpoint -q "${mount_point}"; do
+    umount "${mount_point}" || echo "    ...retrying in 1s"
+    sleep 1
+  done
+}
+# --
+
+function umount_sync() {
+  local mnt_dir="$1"
+
+  if mountpoint -q "${mnt_dir}" ; then
+    echo "  Syncing and unmounting '${mnt_dir}'"
+    sync --file-system "${mnt_dir}"/*
+    umount_loop "${mnt_dir}"
+  fi
+}
+# --
+
+function create_fs_image() {
+  local fs_image="${1}"
+  local filesize="${2}"
+
+  echo "  Creating FS image '${fs_image}'"
+  dd of="${fs_image}" bs="${filesize}" seek=1 count=0
+  mkfs.ext4 -m0 "${fs_image}"
+}
+# --
+
+function print_image_stack() {
+  local base_image="${1}"
+  local reverse="${2:-}"
+
+  if [[ -n "${reverse}" ]] ; then
+    reverse="--reverse"
+  fi
+  # We use "ls" because it sorts alphabetically by default,
+  #  and mount order by timestamp is important for overlayfs to work.
+  ls -1 ${reverse} "${base_image}"* 2>/dev/null
+}
+# --
+
+function print_mount_stack() {
+  local image_mnt_topdir="${1}"
+  local reverse="${2:-}"
+
+  if [[ -n "${reverse}" ]] ; then
+    reverse="--reverse"
+  fi
+
+  # "natural sort" so 10 comes after 2
+  ls -dv1 ${reverse} "${image_mnt_topdir}/"* 2>/dev/null
+}
+# --
+
+function get_curr_datadir() {
+  local image_mnt_topdir="${1}"
+
+  local latest_mount="$(print_mount_stack "${image_mnt_topdir}" | tail -n 1)"
+  echo "${latest_mount}/${UTIL_IMAGE_DATADIR}"
+}
+# --
+
+function generate_lowerdirs() {
+  local image_mnt_topdir="$1"
+  local upper_dir="$2"
+
+  (
+    set -euo pipefail
+    cd "${image_mnt_topdir}"
+
+    ls -v1d --reverse ./*/"${UTIL_IMAGE_DATADIR}" | \
+      awk -v upper="${upper_dir}" '{
+          if ($0 == upper)
+            next
+          ret = ret $0 ":" 
+         }
+         END { printf substr (ret, 1, length(ret) - 1) }'
+  )
+}
+# --
+
+function mount_overlay() {
+  local image_mnt_topdir="$1"
+  local ro="${2:-}"
+
+  local latest_mount="$(print_mount_stack "${image_mnt_topdir}" | tail -n 1)"
+
+  local name="$(basename "${latest_mount}")"
+  local upper_dir="./${name}/${UTIL_IMAGE_DATADIR}"
+  local work_dir="./${name}/${UTIL_IMAGE_WORKDIR}"
+
+  local lowerdirs="$(generate_lowerdirs "${image_mnt_topdir}" "${upper_dir}")"
+
+  local opts=( "-o" "context=system_u:object_r:httpd_sys_content_t:s0" )
+  if [[ "${ro}" == "true" ]] ; then
+    opts+=( "-o" "lowerdir=${lowerdirs}:${upper_dir}" )
+  else
+    opts+=( "-o" "lowerdir=${lowerdirs},upperdir=${upper_dir},workdir=${work_dir}" )
+  fi
+
+  local len="$(echo -n "${opts[@]}" | wc -c)"
+  local maxlen="$(getconf PAGE_SIZE)"
+  if [[ "${len}" -gt "${maxlen}" ]] ; then
+    echo "ERROR: overlayfs mount options command line is longer than PAGE_SIZE"
+    echo " ('${len}' vs. '${maxlen}'). Overlayfs mount would fail."
+    exit 1
+  fi
+
+  echo "  Overlay: '${upper_dir}' :: '${lowerdirs}'"
+  echo "           cmdline is healthy (len: '$len', max '$maxlen')"
+
+  (
+    set -euo pipefail
+    cd "${image_mnt_topdir}"
+
+    mount -t overlay "${opts[@]}" "${name}" "${upper_dir}"
+  )
+}
+# --
+
+function umount_overlay() {
+  local image_mnt_topdir="${1}"
+  local ovl_mnt="$(get_curr_datadir "${image_mnt_topdir}")"
+
+  umount_sync "${ovl_mnt}"
+}
+# --
+
+# The images will be mounted to sub-directories in image_mnt_topdir:
+#   <base>-<ts>                     ==> $image_mnt_topdir/0
+#   <base>-<ts>-snapshot-<ts1>      ==> $image_mnt_topdir/1
+#   <base>-<ts>-snapshot-<ts2>      ==> $image_mnt_topdir/2
+#   ...
+function mount_image_stack() {
+  local base_image="${1}"
+  local image_mnt_topdir="${2}"
+  local ro="${3:-}"
+
+  announce "Mounting image stack for '${base_image}'"
+
+  local count=0
+  local img
+  for img in $(print_image_stack "${base_image}"); do
+
+    [[ -f "${img}" ]] || continue
+
+    local mount_point="${image_mnt_topdir}/${count}"
+    mount_fs_image "${img}" "${mount_point}"
+
+    count=$(( count + 1 ))
+  done
+
+  mount_overlay "${image_mnt_topdir}" "${ro}"
+}
+# --
+
+function umount_image_stack() {
+  local image_mnt_topdir="${1}"
+
+  umount_overlay "${image_mnt_topdir}"
+
+  local mount_point
+  for mount_point in $(print_mount_stack "${image_mnt_topdir}" "true"); do
+    [[ -d "${mount_point}" ]] || continue
+
+    umount_sync "${mount_point}"
+    rmdir "${mount_point}"
+  done
+}
+# --
+
+function cleanup() {
+  local image_mnt_topdir="${1}"
+  local netfs_mount="${2:-}"
+  local in_progress_image="${3:-}"
+
+  announce "Cleaning up"
+
+  set +e
+
+  if [[ -d "${image_mnt_topdir}" ]] ; then
+    umount_image_stack "${image_mnt_topdir}"
+    rmdir "${image_mnt_topdir}"
+  fi
+
+  if [[ -f "${in_progress_image}" ]] ; then
+    echo "  Removing incomplete backup image '${in_progress_image}'"
+    rm "${in_progress_image}"
+  fi
+
+  if [[ -n "${netfs_mount}" ]] ; then
+    umount_netfs "${netfs_mount}"
+  fi
+
+  set -e
+
+  echo "All done."
+}
+# --
+
+function init_trap() {
+  local image_mnt_topdir="${1}"
+  local netfs_mount="${2:-}"
+  local in_progress_image="${3:-}"
+
+  if ! netfs_needs_mounting "${netfs_mount}"; then
+    netfs_mount=""
+  fi
+  trap "cleanup '${image_mnt_topdir}' '${netfs_mount}' '${in_progress_image}'" EXIT
+}
+# --
