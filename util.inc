@@ -4,9 +4,10 @@
 
 UTIL_IMAGE_DATADIR="data"
 UTIL_IMAGE_WORKDIR=".work"
+UTIL_IMAGE_STACK_FILE="image-stack.txt"
+UTIL_IMAGE_WIP_SUBDIR=".wip"
 
 UTIL_IMAGE_SNAPSHOT_SEPARATOR="snapshot"
-
 UTIL_NETFS_MOUNTFLAG_FILE=".mount-check"
 
 function announce() {
@@ -100,9 +101,10 @@ function umount_loop() {
   mount_point="$1"
 
   # Loop until transient "device busy" disappears
+  umount "${mount_point}" || echo "    ...retrying in 1s"
   while mountpoint -q "${mount_point}"; do
-    umount "${mount_point}" || echo "    ...retrying in 1s"
     sleep 1
+    umount "${mount_point}" || echo "    ...retrying in 1s"
   done
 }
 # --
@@ -117,14 +119,38 @@ function umount_sync() {
   fi
 }
 # --
+function wip_image_path() {
+  local images_storage_dir="${1}"
+  echo "${images_storage_dir}/${UTIL_IMAGE_WIP_SUBDIR}"
+}
+# --
 
-function create_fs_image() {
-  local fs_image="${1}"
+function start_wip_image() {
+  local filename="${1}"
   local filesize="${2}"
+  local images_storage_dir="${3}"
 
-  echo "  Creating FS image '${fs_image}'"
-  dd of="${fs_image}" bs="${filesize}" seek=1 count=0
-  mkfs.ext4 -m0 "${fs_image}"
+  local dest_path="$(wip_image_path "${images_storage_dir}")"
+  mkdir -p "${dest_path}"
+  local image_path="${dest_path}/${filename}"
+
+  echo "  Creating WIP FS image '${image_path}'"
+  dd of="${image_path}" bs="${filesize}" seek=1 count=0
+  mkfs.ext4 -m0 "${image_path}"
+}
+# --
+
+function finish_wip_image() {
+  local filename="${1}"
+  local images_storage_dir="${2}"
+
+  local wip_dir="$(wip_image_path "${images_storage_dir}")"
+  local src=${wip_dir}"/${filename}"
+  local dest="${images_storage_dir}/${filename}"
+
+  echo "  Finishing backup image"
+  mv "${src}" "${dest}"
+  rmdir "${wip_dir}"
 }
 # --
 
@@ -132,12 +158,19 @@ function print_image_stack() {
   local base_image="${1}"
   local reverse="${2:-}"
 
+  local wip_path="$(dirname "${base_image}")/${UTIL_IMAGE_WIP_SUBDIR}"
+  local wip_match="${wip_path}/$(basename "${base_image}")"
+
   if [[ -n "${reverse}" ]] ; then
     reverse="--reverse"
+    ls -1 "${wip_match}"* 2>/dev/null || true
   fi
   # We use "ls" because it sorts alphabetically by default,
   #  and mount order by timestamp is important for overlayfs to work.
-  ls -1 ${reverse} "${base_image}"* 2>/dev/null
+  ls -1 ${reverse} "${base_image}"* 2>/dev/null || true
+  if [[ -z "${reverse}" ]] ; then
+    ls -1 "${wip_match}"* 2>/dev/null || true
+  fi
 }
 # --
 
@@ -162,60 +195,75 @@ function get_curr_datadir() {
 }
 # --
 
-function generate_lowerdirs() {
-  local image_mnt_topdir="$1"
-  local upper_dir="$2"
-
-  (
-    set -euo pipefail
-    cd "${image_mnt_topdir}"
-
-    ls -v1d --reverse ./*/"${UTIL_IMAGE_DATADIR}" | \
-      awk -v upper="${upper_dir}" '{
-          if ($0 == upper)
-            next
-          ret = ret $0 ":" 
-         }
-         END { printf substr (ret, 1, length(ret) - 1) }'
-  )
+function image_from_mountpoint() {
+  local mountpoint="$1"
+  head -n1 "${mountpoint}/${UTIL_IMAGE_STACK_FILE}"
 }
 # --
 
-function mount_overlay() {
-  local image_mnt_topdir="$1"
-  local ro="${2:-}"
+function overlay_check_opts() {
+  local opts="${1}"
 
-  local latest_mount="$(print_mount_stack "${image_mnt_topdir}" | tail -n 1)"
-
-  local name="$(basename "${latest_mount}")"
-  local upper_dir="./${name}/${UTIL_IMAGE_DATADIR}"
-  local work_dir="./${name}/${UTIL_IMAGE_WORKDIR}"
-
-  local lowerdirs="$(generate_lowerdirs "${image_mnt_topdir}" "${upper_dir}")"
-
-  local opts=( "-o" "context=system_u:object_r:httpd_sys_content_t:s0" )
-  if [[ "${ro}" == "true" ]] ; then
-    opts+=( "-o" "lowerdir=${lowerdirs}:${upper_dir}" )
-  else
-    opts+=( "-o" "lowerdir=${lowerdirs},upperdir=${upper_dir},workdir=${work_dir}" )
-  fi
-
-  local len="$(echo -n "${opts[@]}" | wc -c)"
+  local len="$(echo -n "${opts}" | wc -c)"
   local maxlen="$(getconf PAGE_SIZE)"
+
   if [[ "${len}" -gt "${maxlen}" ]] ; then
     echo "ERROR: overlayfs mount options command line is longer than PAGE_SIZE"
     echo " ('${len}' vs. '${maxlen}'). Overlayfs mount would fail."
     exit 1
   fi
+}
+# --
 
-  echo "  Overlay: '${upper_dir}' :: '${lowerdirs}'"
-  echo "           cmdline is healthy (len: '$len', max '$maxlen')"
+function _mount_overlay() {
+  local overlay_dir="$1"
+  local lowerdirs="$2"
+  local ro="$3"
+
+  local upperdir="./${overlay_dir}/${UTIL_IMAGE_DATADIR}"
+  local work_dir="${overlay_dir}/${UTIL_IMAGE_WORKDIR}"
+  local opts=( "-o" "context=system_u:object_r:httpd_sys_content_t:s0" )
+
+  if [[ "${ro}" == "true" ]] ; then
+    opts+=( "-o" "lowerdir=${upperdir}:${lowerdirs}" )
+  else
+    opts+=( "-o" "lowerdir=${lowerdirs},upperdir=${upperdir},workdir=${work_dir}" )
+  fi
+
+  overlay_check_opts "${opts[@]}"
+
+  echo "  Overlay: '${upperdir}' :: '${lowerdirs}'"
+  mount -t overlay "${opts[@]}" "${name}" "${upperdir}"
+}
+# --
+
+function mount_overlay() {
+  local image_mnt_topdir="$1"
+  local overlay_topdir="$2"
+  local ro="${3:-}"
+
+  local overlay_dir="$(basename "${overlay_topdir}")"
+  local name="$(image_from_mountpoint "${overlay_topdir}")"
+
+  local dir
+  declare -A mount_map
+  for dir in $(print_mount_stack "${image_mnt_topdir}"); do
+    local img="$(image_from_mountpoint "${dir}")"
+    mount_map[${img}]="./$(basename "${dir}")"
+  done
+
+  local lowerdirs=""
+  local s_img
+  for s_img in $(cat "${overlay_topdir}/${UTIL_IMAGE_STACK_FILE}"); do
+    [[ "${s_img}" != "${name}" ]] || continue
+    lowerdirs="${lowerdirs}${mount_map[$s_img]}/data:"
+  done
+  lowerdirs="${lowerdirs%:}"
 
   (
     set -euo pipefail
     cd "${image_mnt_topdir}"
-
-    mount -t overlay "${opts[@]}" "${name}" "${upper_dir}"
+    _mount_overlay "${overlay_dir}" "${lowerdirs}" "${ro}"
   )
 }
 # --
@@ -233,6 +281,8 @@ function umount_overlay() {
 #   <base>-<ts>-snapshot-<ts1>      ==> $image_mnt_topdir/1
 #   <base>-<ts>-snapshot-<ts2>      ==> $image_mnt_topdir/2
 #   ...
+# Using numbered mount points shortens the overlayfs kernel mount command line which has
+#  a fixed size limit of PAGE_SIZE-1 (see mount_overlay).
 function mount_image_stack() {
   local base_image="${1}"
   local image_mnt_topdir="${2}"
@@ -241,18 +291,30 @@ function mount_image_stack() {
   announce "Mounting image stack for '${base_image}'"
 
   local count=0
-  local img
+  local img img_file
+  local stack=""
   for img in $(print_image_stack "${base_image}"); do
-
     [[ -f "${img}" ]] || continue
 
     local mount_point="${image_mnt_topdir}/${count}"
-    mount_fs_image "${img}" "${mount_point}"
+    mount_fs_image "${img}" "${mount_point}" "${ro}"
+
+    img_file="$(basename "${img}")"
+    stack="${img_file}:${stack}"
+
+    local stackfile="${mount_point}/${UTIL_IMAGE_STACK_FILE}"
+    if [[ "${ro}" != "true" && ! -f "${stackfile}" ]] ; then
+      echo "  Image stack info '${stackfile}' not found, adding."
+      echo -e "${stack//:/\\n}" >  "${stackfile}"
+    fi
 
     count=$(( count + 1 ))
   done
 
-  mount_overlay "${image_mnt_topdir}" "${ro}"
+  # Only mount overlays if there are any snapshots, i.e. if there's a need to merge
+  if [[ "${count}" -gt 1 ]] ; then
+    mount_overlay "${image_mnt_topdir}" "${mount_point}" "${ro}"
+  fi
 }
 # --
 
@@ -274,7 +336,7 @@ function umount_image_stack() {
 function cleanup() {
   local image_mnt_topdir="${1}"
   local netfs_mount="${2:-}"
-  local in_progress_image="${3:-}"
+  local images_storage_dir="${3:-}"
 
   announce "Cleaning up"
 
@@ -285,9 +347,10 @@ function cleanup() {
     rmdir "${image_mnt_topdir}"
   fi
 
-  if [[ -f "${in_progress_image}" ]] ; then
-    echo "  Removing incomplete backup image '${in_progress_image}'"
-    rm "${in_progress_image}"
+  local wip_dir="${images_storage_dir}/${UTIL_IMAGE_WIP_SUBDIR}"
+  if [[ -n "${images_storage_dir}" && -d "${wip_dir}" ]] ; then
+    echo "  Removing incomplete / WIP image dir '${wip_dir}'"
+    rm -vrf "${wip_dir}"
   fi
 
   if [[ -n "${netfs_mount}" ]] ; then
@@ -303,11 +366,11 @@ function cleanup() {
 function init_trap() {
   local image_mnt_topdir="${1}"
   local netfs_mount="${2:-}"
-  local in_progress_image="${3:-}"
+  local images_storage_dir="${3:-}"
 
   if ! netfs_needs_mounting "${netfs_mount}"; then
     netfs_mount=""
   fi
-  trap "cleanup '${image_mnt_topdir}' '${netfs_mount}' '${in_progress_image}'" EXIT
+  trap "cleanup '${image_mnt_topdir}' '${netfs_mount}' '${images_storage_dir}'" EXIT
 }
 # --

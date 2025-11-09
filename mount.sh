@@ -10,9 +10,8 @@ source "${workdir}/settings.env"
 
 base="$1"
 base_path="$(sanitise_image_path "${base}" "${BACKUP_IMAGES_DEST}")"
-image_mount_base="${BACKUP_IMAGES_MOUNT}/${base}"
 
-init_trap "${image_mount_base}" "${NETFS_MOUNT}"
+init_trap "${BACKUP_IMAGES_MOUNT}" "${NETFS_MOUNT}"
 
 netumount="--netfs"
 netfs_needs_mounting "${NETFS_MOUNT}" || netumount=""
@@ -25,9 +24,9 @@ if [[ ! -f "${base_path}" ]] ; then
   exit 1
 fi
 
-mount_image_stack "$base_path" "${image_mount_base}" "true"
+mount_image_stack "$base_path" "${BACKUP_IMAGES_MOUNT}" "true"
 
-datadir="$(get_curr_datadir "${image_mount_base}" "${base_path}")"
+datadir="$(get_curr_datadir "${BACKUP_IMAGES_MOUNT}" "${base_path}")"
 echo "==> MOUNT COMPLETE: Latest '$base' state is now available at '${datadir}'."
 echo "Run './umount.sh ${netumount} \"${base}\"' to unmount."
 

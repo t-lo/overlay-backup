@@ -56,46 +56,33 @@ fi
 # --
 
 announce "Preparing a new '${name}' backup at $(date)"
-image_mount_base="${BACKUP_IMAGES_MOUNT}/${name}"
 
 if [[ -n "${base}" ]] ; then
-  base_path="$(sanitise_image_path "${base}" "${BACKUP_IMAGES_DEST}")"
-
   image="$(snapshot_image_name "${base}")"
-  image_path="$(sanitise_image_path "${image}" "${BACKUP_IMAGES_DEST}")"
-  echo "  Incremental backup to '${image}', image stack '${base_path}'"
+  echo "  Incremental backup to '${image}', image stack '${base}'"
 else
   image="$(full_image_name "${name}")"
-  image_path="$(sanitise_image_path "${image}" "${BACKUP_IMAGES_DEST}")"
   base="${image}"
-  base_path="${image_path}"
   echo "  Full backup to '${image}'"
 fi
 
-cleanup_netfs="true"
-netfs_needs_mounting "${NETFS_MOUNT}" || cleanup_netfs="false"
+# Prepare backup image and snapshot stack
 
-# backup image creation and mounting
-init_trap "${image_mount_base}" "${NETFS_MOUNT}" "${image_path}"
+init_trap "${BACKUP_IMAGES_MOUNT}" "${NETFS_MOUNT}" "${BACKUP_IMAGES_DEST}"
 mount_netfs "${NETFS_URI}" "${NETFS_MOUNT}" "${NETFS_MOUNTOPTS}"
 
-if [[ "${image_path}" != "${base_path}" && ! -f "${base_path}" ]] ; then
+base_path="$(sanitise_image_path "${base}" "${BACKUP_IMAGES_DEST}")"
+if [[ "${image}" != "${base}" && ! -f "${base_path}" ]] ; then
   echo "ERROR: Incremental backup requested but base image '${base_path}' not found."
   exit 1
 fi
 
-create_fs_image "${image_path}" "${BACKUP_FSFILE_SIZE}"
+start_wip_image "${image}" "${BACKUP_FSFILE_SIZE}" "${BACKUP_IMAGES_DEST}"
+mount_image_stack "${base_path}" "${BACKUP_IMAGES_MOUNT}"  
 
-if [[ "${base}" == "${image}" ]] ; then
-  # We don't need overlayfs for a new full backup, just the datadir
-  mount_fs_image "${image_path}" "${image_mount_base}/${image}"
-else
-  mount_image_stack "${base_path}" "${image_mount_base}"  
-fi
+dest="$(get_curr_datadir "${BACKUP_IMAGES_MOUNT}" "${base}")"
 
-dest="$(get_curr_datadir "${image_mount_base}" "${base}")"
-
-# The Backup
+# Commence backup
 
 announce "Backing up to '$dest'"
 
@@ -119,13 +106,11 @@ set -e
 ts="$(date --rfc-3339=seconds | sed -e 's/ /_/' -e 's/:/-/g' -e 's/+.*//')"
 touch "$(dirname "${dest}")/create-success-${ts}"
 
-announce "Images / snapshots stack:"
-print_image_stack "${base_path}" "true" | sed 's:/[^ ]*/::g' | tee "$(dirname "${dest}")/image-stack.txt"
+echo "  --- Images / snapshots stack:"
+cat "${img_basedir}/${UTIL_IMAGE_STACK_FILE}"
+echo "  ---"
 
-umount_image_stack "${image_mount_base}"
-if $cleanup_netfs; then
-  umount_netfs "${NETFS_MOUNT}"
-fi
+umount_image_stack "${BACKUP_IMAGES_MOUNT}"
+finish_wip_image "${image}" "${BACKUP_IMAGES_DEST}"
 
 announce "Backup to '${image}' concluded successfully at $(date) "
-init_trap "${image_mount_base}" "${NETFS_MOUNT}"

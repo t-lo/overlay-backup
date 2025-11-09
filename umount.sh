@@ -17,9 +17,8 @@ fi
 
 base="$1"
 base_path="$(sanitise_image_path "${base}" "${BACKUP_IMAGES_DEST}")"
-image_mount_base="${BACKUP_IMAGES_MOUNT}/${base}"
 
-init_trap "${image_mount_base}" "${NETFS_MOUNT}"
+init_trap "${BACKUP_IMAGES_MOUNT}" "${NETFS_MOUNT}"
 
 if [[ ! -f "${base_path}" ]] ; then
   echo "ERROR: backup image '${base_image}' not found."
