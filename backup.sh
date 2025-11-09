@@ -80,7 +80,7 @@ fi
 start_wip_image "${image}" "${BACKUP_FSFILE_SIZE}" "${BACKUP_IMAGES_DEST}"
 mount_image_stack "${base_path}" "${BACKUP_IMAGES_MOUNT}"  
 
-dest="$(get_curr_datadir "${BACKUP_IMAGES_MOUNT}" "${base}")"
+dest="$(get_merged_dir "${BACKUP_IMAGES_MOUNT}" "${base}")"
 
 # Commence backup
 

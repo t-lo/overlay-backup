@@ -4,6 +4,8 @@
 
 UTIL_IMAGE_DATADIR="data"
 UTIL_IMAGE_WORKDIR=".work"
+UTIL_IMAGE_MERGEDIR="merged"
+
 UTIL_IMAGE_STACK_FILE="image-stack.txt"
 UTIL_IMAGE_WIP_SUBDIR=".wip"
 
@@ -86,14 +88,17 @@ function mount_fs_image() {
         -o context='system_u:object_r:httpd_sys_content_t:s0' \
         "${fs_image}" "${mount_point}"
 
-  if [[ ! -d "${mount_point}/${UTIL_IMAGE_DATADIR}" ]] ; then
-    echo "    ${UTIL_IMAGE_DATADIR} missing in image; creating it."
-    mkdir -p "${mount_point}/${UTIL_IMAGE_DATADIR}"
-  fi
-  if [[ ! -d "${mount_point}/${UTIL_IMAGE_WORKDIR}" ]] ; then
-    echo "    ${UTIL_IMAGE_WORKDIR} missing in image; creating it."
-    mkdir -p "${mount_point}/${UTIL_IMAGE_WORKDIR}"
-  fi
+  function check_create_dir() {
+    local d="$1"
+    if [[ ! -d "${d}" ]] ; then
+      echo "    $(basename "${d}") missing in image; creating it."
+      mkdir -p "${d}"
+    fi
+  }
+
+  check_create_dir "${mount_point}/${UTIL_IMAGE_DATADIR}"
+  check_create_dir "${mount_point}/${UTIL_IMAGE_MERGEDIR}"
+  check_create_dir "${mount_point}/${UTIL_IMAGE_WORKDIR}"
 }
 # --
 
@@ -187,11 +192,11 @@ function print_mount_stack() {
 }
 # --
 
-function get_curr_datadir() {
+function get_merged_dir() {
   local image_mnt_topdir="${1}"
 
   local latest_mount="$(print_mount_stack "${image_mnt_topdir}" | tail -n 1)"
-  echo "${latest_mount}/${UTIL_IMAGE_DATADIR}"
+  echo "${latest_mount}/${UTIL_IMAGE_MERGEDIR}"
 }
 # --
 
@@ -221,6 +226,7 @@ function _mount_overlay() {
   local ro="$3"
 
   local upperdir="./${overlay_dir}/${UTIL_IMAGE_DATADIR}"
+  local merged="./${overlay_dir}/${UTIL_IMAGE_MERGEDIR}"
   local work_dir="${overlay_dir}/${UTIL_IMAGE_WORKDIR}"
   local opts=( "-o" "context=system_u:object_r:httpd_sys_content_t:s0" )
 
@@ -233,7 +239,7 @@ function _mount_overlay() {
   overlay_check_opts "${opts[@]}"
 
   echo "  Overlay: '${upperdir}' :: '${lowerdirs}'"
-  mount -t overlay "${opts[@]}" "${name}" "${upperdir}"
+  mount -t overlay "${opts[@]}" "${name}" "${merged}"
 }
 # --
 
@@ -270,7 +276,7 @@ function mount_overlay() {
 
 function umount_overlay() {
   local image_mnt_topdir="${1}"
-  local ovl_mnt="$(get_curr_datadir "${image_mnt_topdir}")"
+  local ovl_mnt="$(get_merged_dir "${image_mnt_topdir}")"
 
   umount_sync "${ovl_mnt}"
 }
