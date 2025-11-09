@@ -40,6 +40,9 @@ This will
 - unmount the FS image loop-back mount
 - if network storage was mounted in step 1, unmount it
 
+In fact, the new backup file will be created at a temporary place on the network storage, and only moved into place when finished successfully.
+This prevents "stale" partial backup files and will ensure that we don't mount filesystem images that are currently being written to.
+
 Now that we have a full back-up, we can create snapshots.
 Let's assume the name of our full back-up is `myhome-2025-10-19_18-55-20`.
 We supply it to the backup script to create an incremental snapshot:
@@ -86,22 +89,28 @@ Based on the example above, `ls.sh` will return:
 It uses a temporary directory for its mounts.
 Let's run it:
 ```bash
-./mount.sh myhome-2025-10-19_18-55-20
+./mount.sh myhome-2025-10-19_18-55-20 deep
 [...]
-==> MOUNT COMPLETE: Latest 'myhome-2025-10-19_18-55-20' state is now available at '/tmp/backup/image-mounts/myhome-2025-10-19_18-55-20/3/data'.
+==> MOUNT COMPLETE: Latest 'myhome-2025-10-19_18-55-20' state is now available at '/tmp/backup/image-mounts/myhome-2025-10-19_18-55-20/3/merged'.
 Run './umount.sh "myhome-2025-10-19_18-55-20"' to unmount.
 ```
+You can omit the `deep` option if you only need to access the full merged state of the very last snapshot.
 
-The latest state (including all snapshots, i.e. up to `myhome-2025-10-19_18-55-20-snapshot-2025-10-20-10-00-00`) can now be accessed in `/tmp/backup/image-mounts/myhome-2025-10-19_18-55-20/3/data`.
-Note that the mount is read-only so as to prevent introducing accidental changes.
+The latest state (including all snapshots, i.e. up to `myhome-2025-10-19_18-55-20-snapshot-2025-10-20-10-00-00`) can now be accessed in `/tmp/backup/image-mounts/myhome-2025-10-19_18-55-20/3/merged`.
+**Note that the mount is strictly read-only so as to prevent introducing accidental changes.**
 
 Additionally, the initial full backup as well as _differences_ to the respective previous state are accessible via subdirectories in `/tmp/backup/image-mounts/myhome-2025-10-19_18-55-20/`.
-- `0/data/` contains the original full backup `myhome-2025-10-19_18-55-20`
-- `1/data/` contains _differences_ between full backup and `myhome-2025-10-19_18-55-20-snapshot-2025-10-19-20-30-00`
-- `2/data/` contains _differences_ between `myhome-2025-10-19_18-55-20-snapshot-2025-10-19-20-30-00` and `myhome-2025-10-19_18-55-20-snapshot-2025-10-19-20-30-00`
-- `3/data/` the "merged" state of all differences including `myhome-2025-10-19_18-55-20-snapshot-2025-10-20-10-00-00`, i.e. most recent backup state.
+- `0/data/` contains the original full backup `myhome-2025-10-19_18-55-20`.  `0/merged` is empty as there is nothing to merge.
+- `1/merged/` contains the full snapshot state of `myhome-2025-10-19_18-55-20-snapshot-2025-10-19-20-30-00`.
+  It is only available if the `deep` option was given.
+  - `1/data/` contains _differences_ between full backup and `myhome-2025-10-19_18-55-20-snapshot-2025-10-19-20-30-00`
+- `2/merged/` contains the full snapshot state of `myhome-2025-10-19_18-55-20-snapshot-2025-10-19-20-30-00`
+  It is only available if the `deep` option was given.
+  - `2/data/` contains _differences_ between `myhome-2025-10-19_18-55-20-snapshot-2025-10-19-20-30-00` and `myhome-2025-10-19_18-55-20-snapshot-2025-10-19-20-30-00`
+- `3/merged/` the full state of all snapshots, including the latest.
+  - `3/data/` _differences_ between `myhome-2025-10-19_18-55-20-snapshot-2025-10-20-10-00-00` and `myhome-2025-10-19_18-55-20-snapshot-2025-10-19-20-30-00`
 
-The incremental snapshots contain files that have been added, and whiteouts (special character devices) for files and directories that have been deleted.
+The incremental snapshot data directories contain files that have been added or modified, and whiteouts (special character devices) for files and directories that have been deleted.
 
 Use 
 ```
@@ -122,9 +131,10 @@ Loopback-mounted file system images (either using `mount.sh` or manually) contai
 ```
  data/           - Backup data. Full data for full backups, new files and white-outs for incremental snapshots.
  .work/          - Internal "work" directory for overlayfs. Only used on "top-level" writable snapshots during backup.
+ merged/         - Merged state of a snapshot and all previous data. Only used when image stacks are mounted.
  created-<ts>    - Timestamp of image creation (after data was copied)
  changes.txt     - Changes from the previous snapshot, or full contents of the backup if this is a full backup.
- image-stack.txt - List of all snapshot images and full backup image, including the current. 
+ image-stack.txt - List of all snapshot images and full backup image, including the current. Most recent snapshot comes first.
 ```
 
 ## Removing old directories

@@ -42,9 +42,8 @@ while [[ "$#" -gt 0 ]] ; do
 done
 
 if [[ -z "$name" ]] ; then
-  echo "ERROR: Missing mandatory <name> argument."
   usage
-  exit 1
+  exit 0
 fi
 
 if [[ -z "${@}" ]] ; then

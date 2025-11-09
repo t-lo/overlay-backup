@@ -81,10 +81,18 @@ function umount_netfs() {
 function mount_fs_image() {
   local fs_image="${1}"
   local mount_point="${2}"
+  local ro="${3:-}"
+
+  if [[ "${ro}" == "true" ]] ; then
+    ro="-o ro"
+  else
+    ro=""
+  fi
 
   echo "  Mount '${mount_point}'"
   mkdir -p "${mount_point}"
   mount -o loop \
+        ${ro} \
         -o context='system_u:object_r:httpd_sys_content_t:s0' \
         "${fs_image}" "${mount_point}"
 
@@ -103,7 +111,7 @@ function mount_fs_image() {
 # --
 
 function umount_loop() {
-  mount_point="$1"
+  local mount_point="$1"
 
   # Loop until transient "device busy" disappears
   umount "${mount_point}" || echo "    ...retrying in 1s"
@@ -274,14 +282,6 @@ function mount_overlay() {
 }
 # --
 
-function umount_overlay() {
-  local image_mnt_topdir="${1}"
-  local ovl_mnt="$(get_merged_dir "${image_mnt_topdir}")"
-
-  umount_sync "${ovl_mnt}"
-}
-# --
-
 # The images will be mounted to sub-directories in image_mnt_topdir:
 #   <base>-<ts>                     ==> $image_mnt_topdir/0
 #   <base>-<ts>-snapshot-<ts1>      ==> $image_mnt_topdir/1
@@ -293,6 +293,7 @@ function mount_image_stack() {
   local base_image="${1}"
   local image_mnt_topdir="${2}"
   local ro="${3:-}"
+  local deep="${4:-}"
 
   announce "Mounting image stack for '${base_image}'"
 
@@ -315,10 +316,14 @@ function mount_image_stack() {
     fi
 
     count=$(( count + 1 ))
+
+    if [[ "${deep}" == "true" && "${count}" -gt 1 ]] ; then
+      mount_overlay "${image_mnt_topdir}" "${mount_point}" "${ro}"
+    fi
   done
 
   # Only mount overlays if there are any snapshots, i.e. if there's a need to merge
-  if [[ "${count}" -gt 1 ]] ; then
+  if [[ "${count}" -gt 1 && "${deep}" != "true" ]] ; then
     mount_overlay "${image_mnt_topdir}" "${mount_point}" "${ro}"
   fi
 }
@@ -327,12 +332,11 @@ function mount_image_stack() {
 function umount_image_stack() {
   local image_mnt_topdir="${1}"
 
-  umount_overlay "${image_mnt_topdir}"
-
   local mount_point
   for mount_point in $(print_mount_stack "${image_mnt_topdir}" "true"); do
     [[ -d "${mount_point}" ]] || continue
-
+    local ovl_mnt="${mount_point}/${UTIL_IMAGE_MERGEDIR}"
+    umount_sync "${ovl_mnt}"
     umount_sync "${mount_point}"
     rmdir "${mount_point}"
   done
