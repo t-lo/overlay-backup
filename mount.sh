@@ -18,11 +18,6 @@ fi
 base="$1"
 base_path="$(sanitise_image_path "${base}" "${BACKUP_IMAGES_DEST}")"
 
-if [[ ! -f "${base_path}" ]] ; then
-  echo "ERROR: base '${base}' not found at '${base_path}.'"
-  exit 1
-fi
-
 deep="false"
 if [[ "${2:-}" == "deep" ]] ; then
   deep="true"
@@ -37,7 +32,7 @@ mount_netfs "${NETFS_URI}" "${NETFS_MOUNT}" "${NETFS_MOUNTOPTS}"
 
 # Check for presence of base_path image only after NETFS was mounted.
 if [[ ! -f "${base_path}" ]] ; then
-  echo "ERROR: backup image '${base_path}' not found."
+  echo "ERROR: base '${base}' not found at '${base_path}.'"
   exit 1
 fi
 
