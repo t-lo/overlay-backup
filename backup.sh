@@ -115,3 +115,6 @@ umount_image_stack "${BACKUP_IMAGES_MOUNT}"
 finish_wip_image "${image}" "${BACKUP_IMAGES_DEST}"
 
 announce "Backup to '${image}' concluded successfully at $(date) "
+
+echo " --- NETFS usage after backup"
+df -h "${NETFS_MOUNT}/${UTIL_NETFS_MOUNTFLAG_FILE}"
