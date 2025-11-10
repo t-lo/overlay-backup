@@ -58,10 +58,12 @@ announce "Preparing a new '${name}' backup at $(date)"
 
 if [[ -n "${base}" ]] ; then
   image="$(snapshot_image_name "${base}")"
+  fs_file_size="${SNAPSHOT_BACKUP_FSFILE_SIZE}"
   echo "  Incremental backup to '${image}', image stack '${base}'"
 else
   image="$(full_image_name "${name}")"
   base="${image}"
+  fs_file_size="${FULL_BACKUP_FSFILE_SIZE}"
   echo "  Full backup to '${image}'"
 fi
 
@@ -76,7 +78,7 @@ if [[ "${image}" != "${base}" && ! -f "${base_path}" ]] ; then
   exit 1
 fi
 
-start_wip_image "${image}" "${BACKUP_FSFILE_SIZE}" "${BACKUP_IMAGES_DEST}"
+start_wip_image "${image}" "${fs_file_size}" "${BACKUP_IMAGES_DEST}"
 mount_image_stack "${base_path}" "${BACKUP_IMAGES_MOUNT}"  
 
 dest="$(get_merged_dir "${BACKUP_IMAGES_MOUNT}" "${base}")"
