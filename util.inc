@@ -53,12 +53,12 @@ function netfs_needs_mounting() {
 function mount_netfs() {
   local uri="${1}"
   local mountpoint="${2}"
-  local userpass="${3}"
+  local mountopts="${3}"
 
   if netfs_needs_mounting "${mountpoint}" ; then
     echo "  Mounting net FS to '${mountpoint}'"
     mkdir -p "${mountpoint}"
-    local opts=( "-o" "seal,${userpass}" "${uri}" "${mountpoint}" )
+    local opts=( "-o" "${mountopts}" "${uri}" "${mountpoint}" )
     mount.cifs "${opts[@]}"
     touch "${mountpoint}/${UTIL_NETFS_MOUNTFLAG_FILE}"
   fi
