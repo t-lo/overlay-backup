@@ -12,14 +12,19 @@ UTIL_IMAGE_WIP_SUBDIR=".wip"
 UTIL_IMAGE_SNAPSHOT_SEPARATOR="snapshot"
 UTIL_NETFS_MOUNTFLAG_FILE=".mount-check"
 
+function ts() {
+  date --rfc-3339=seconds | sed -e 's/ /_/' -e 's/:/-/g' -e 's/+.*//'
+}
+# --
+
 function announce() {
-  echo "#############################  ${@}"
+  echo "#### $(ts) ####  ${@}"
 }
 # --
 
 function snapshot_image_name() {
   local base="$1"
-  local ts="$(date --rfc-3339=seconds | sed -e 's/ /_/' -e 's/:/-/g' -e 's/+.*//')"
+  local ts="$(ts)"
   echo  "${base}-${UTIL_IMAGE_SNAPSHOT_SEPARATOR}-${ts}"
 }
 # --

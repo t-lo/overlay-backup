@@ -54,7 +54,8 @@ fi
 
 # --
 
-announce "Preparing a new '${name}' backup at $(date)"
+ts_start="$(ts)"
+announce "Preparing a new '${name}' backup at ${ts_start}"
 
 if [[ -n "${base}" ]] ; then
   image="$(snapshot_image_name "${base}")"
@@ -114,7 +115,14 @@ echo "  ---"
 umount_image_stack "${BACKUP_IMAGES_MOUNT}"
 finish_wip_image "${image}" "${BACKUP_IMAGES_DEST}"
 
-announce "Backup to '${image}' concluded successfully at $(date) "
-
-echo " --- NETFS usage after backup"
+echo
+echo
+ts_end="$(ts)"
+announce "Backup concluded successfully."
+echo "  Image : ${image}"
+echo "  Start : ${ts_start}"
+echo "  End   : ${ts_end}"
+echo "  NETFS usage after backup"
 df -h "${NETFS_MOUNT}/${UTIL_NETFS_MOUNTFLAG_FILE}"
+echo
+echo
