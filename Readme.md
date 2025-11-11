@@ -79,7 +79,7 @@ Use `restore.sh` to restore the latest state of a backup image stack to a local 
 ./restore.sh <backup> <destination>
 ```
 
-`backup` is the base name (full-backup image name) of a backup stack, and `destination` is the local destination directory.
+`<backup>` is the base name (full-backup image name) of a backup stack, and `destination` is the local destination directory.
 
 Use `ls.sh` to get a list of available backups.
 
@@ -134,7 +134,7 @@ If `mount.sh` mounted the network storage, use
 ```
 ./umount.sh --netfs "myhome-2025-10-19_18-55-20"
 ```
-to also unmount that, too.
+to unmount that, too.
 
 ## Directory structure inside of file system images
 
@@ -166,3 +166,13 @@ will remove
 ./prune.sh myhome-2025-10-19_18-55-20
 ```
 will remove all snapshots and the full backup.
+
+# Advanced backup configuration: pre- and post-hooks and pre-defined set of backup sources
+
+The scripts support a more advanced set-up where backup and restore call optional hook functions before and after a backup or restore, repectively.
+This is handy to e.g. include a database dump in the backup, and restore it after all files have been copied.
+
+A default set of backup sources can be defined this way, too.
+This is handy if the backup includes multiple files and directories as it removes the need to specify these on the command line.
+
+These backup sources and hook functions are implemented via `settings.env`; see [`example.settings.env`](example.settings.env) for boilerplate and details on the callbacks.

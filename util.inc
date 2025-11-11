@@ -386,6 +386,8 @@ function umount_image_stack() {
 }
 # --
 
+function cb_cleanup()     { true; }
+
 function cleanup() {
   local image_mnt_topdir="${1}"
   local netfs_mount="${2:-}"
@@ -409,6 +411,8 @@ function cleanup() {
   if [[ -n "${netfs_mount}" ]] ; then
     umount_netfs "${netfs_mount}"
   fi
+
+  cb_cleanup
 
   set -e
 
