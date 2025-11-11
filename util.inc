@@ -370,6 +370,8 @@ function umount_image_stack() {
 }
 # --
 
+function cb_cleanup()     { true; }
+
 function cleanup() {
   local image_mnt_topdir="${1}"
   local netfs_mount="${2:-}"
@@ -379,12 +381,14 @@ function cleanup() {
 
   set +e
 
+  local wip_dir="${images_storage_dir}/${UTIL_IMAGE_WIP_SUBDIR}"
+  cb_cleanup "${wip_dir}"
+
   if [[ -d "${image_mnt_topdir}" ]] ; then
     umount_image_stack "${image_mnt_topdir}"
     rmdir "${image_mnt_topdir}"
   fi
 
-  local wip_dir="${images_storage_dir}/${UTIL_IMAGE_WIP_SUBDIR}"
   if [[ -n "${images_storage_dir}" && -d "${wip_dir}" ]] ; then
     echo "  Removing incomplete / WIP image dir '${wip_dir}'"
     rm -vrf "${wip_dir}"

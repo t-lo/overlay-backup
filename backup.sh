@@ -1,6 +1,5 @@
 #!/bin/bash
 # vim: ts=2 et sw=2
-#
 
 set -euo pipefail
 
@@ -11,10 +10,17 @@ source "${scriptdir}/settings.env"
 # --
 
 function usage() {
-  echo "$0 <name> [<base>] -- <src> [<src2>] ..."
+  echo "$0 [--callback <script>] <name> [<base>]  -- <src> [<src2>] ..."
   echo "  Create a new FS image file backup of <name>."
   echo "   If <base> was provided, create a new incremental backup based on stack <base>."
   echo "  Everything after the '--' separator will be backed up."
+  echo "  Optional arguments:"
+  echo "  --callback <script> - source <script> during initialisation and run various callbacks during backup, "
+  echo "                        implemented in <script>. Refer to 'example-callbacks.sh' for reference."
+  echo "                        The callback functions run in the same context as the 'backup.sh' script and"
+  echo "                        thus have access to all functions, settings, and variables."
+  echo "                        If any function except cb_cleanup aborts or returns nonzero,"
+  echo "                        the backup will fail."
 }
 # --
 
@@ -22,12 +28,15 @@ function usage() {
 # Process command line arguments
 #
 
+callbacks=""
+
 name=""
 base=""
 cmdline="${@}"
 while [[ "$#" -gt 0 ]] ; do
   case "$1" in
     --) shift; break;;
+    --callbacks) callbacks="$2"; shift;;
     *)  if [[ -z "${name}" ]] ; then
           name="$1"
         elif [[ -z "${base}" ]] ; then
@@ -53,6 +62,23 @@ if [[ -z "${@}" ]] ; then
 fi
 
 # --
+# callbacks
+
+function cb_pre_backup()  { true; }
+function cb_post_backup() { true; }
+# cb_cleanup() is defined in util.inc
+
+if [[ -n "${callbacks}" ]] ; then
+  if [[ ! -f "${callbacks}" ]] ; then
+    echo "ERROR: Hooks script '${callbacks}' not found."
+    usage
+    exit 1
+  fi
+  source "${callbacks}"
+fi
+
+# --
+# image prep
 
 ts_start="$(ts)"
 announce "Preparing a new '${name}' backup at ${ts_start}"
@@ -68,8 +94,6 @@ else
   echo "  Full backup to '${image}'"
 fi
 
-# Prepare backup image and snapshot stack
-
 init_trap "${BACKUP_IMAGES_MOUNT}" "${NETFS_MOUNT}" "${BACKUP_IMAGES_DEST}"
 mount_netfs "${NETFS_URI}" "${NETFS_MOUNT}" "${NETFS_MOUNTOPTS}"
 
@@ -84,7 +108,10 @@ mount_image_stack "${base_path}" "${BACKUP_IMAGES_MOUNT}"
 
 dest="$(get_backup_dir "${BACKUP_IMAGES_DEST}")"
 
+# --
 # Commence backup
+
+cb_pre_backup "${name}" "${base}" "${image}" "${dest}" "--" "${@}"
 
 announce "Backing up to '$dest'"
 
@@ -111,6 +138,9 @@ touch "$(dirname "${dest}")/create-success-${ts}"
 echo "  --- Images / snapshots stack:"
 cat "${img_basedir}/${UTIL_IMAGE_STACK_FILE}"
 echo "  ---"
+
+
+cb_post_backup "${name}" "${base}" "${image}" "${dest}"
 
 umount_image_stack "${BACKUP_IMAGES_MOUNT}"
 finish_wip_image "${image}" "${BACKUP_IMAGES_DEST}"
