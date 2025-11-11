@@ -6,6 +6,9 @@ set -euo pipefail
 
 scriptdir="$(cd "$(dirname "$0")"; pwd)"
 source "${scriptdir}/util.inc"
+
+function cb_restore_pre()  { true; }
+function cb_restore_post() { true; }
 source "${scriptdir}/settings.env"
 
 # --
@@ -55,6 +58,8 @@ mount_image_stack "${base_path}" "${BACKUP_IMAGES_MOUNT}" "true"
 
 src="$(get_backup_dir "${BACKUP_IMAGES_DEST}")"
 
+cb_restore_pre "${base}" "${src}" "${dest}"
+
 announce "Restoring '${src}' to '${dest}'"
 
 img_basedir="$(dirname "${dest}")"
@@ -62,6 +67,8 @@ img_basedir="$(dirname "${dest}")"
 rsync --archive \
       --info=progress2 \
       "${src}"/* "${dest}"/
+
+cb_restore_post "${base}" "${src}" "${dest}"
 
 ts="$(date --rfc-3339=seconds | sed -e 's/ /_/' -e 's/:/-/g' -e 's/+.*//')"
 touch "${dest}/restore-success-${ts}"
