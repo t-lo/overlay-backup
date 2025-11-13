@@ -205,6 +205,14 @@ function print_mount_stack() {
 }
 # --
 
+function get_data_dir() {
+  local image_mnt_topdir="${1}"
+
+  local latest_mount="$(print_mount_stack "${image_mnt_topdir}" | tail -n 1)"
+  echo "${latest_mount}/${UTIL_IMAGE_DATADIR}"
+}
+# --
+
 function get_merged_dir() {
   local image_mnt_topdir="${1}"
 
