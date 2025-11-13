@@ -18,6 +18,7 @@ Multiple snapshots can be created; snapshots will only store differences to the 
 2. The commands:
   - `backup.sh <name> [<stack-name>] -- <files...>` Create new backup containing `<files...>`.
     If `<stack-name>` is provided, it is existing backup stack to incrementally add a new backup to.
+  - `restore.sh <stack-name> <dest-dir>` restores a backup to a local folder.
   - `ls.sh` lists all existing backup stacks.
   - `mount.sh <stack-name>` mounts a backup stack (base full backup and all incrementals) for browsing.
   - `umount.sh <stack-name>` unmounts it.
@@ -70,6 +71,17 @@ After a while, we have a stack of base + snapshots on the network storage, e.g.
   ...
 ```
 Each of the snapshots only stores differences to the previous snapshot, e.g. `myhome-2025-10-19_18-55-20-snapshot-2025-10-20-10-00-00` only holds the delta to `myhome-2025-10-19_18-55-20-snapshot-2025-10-19-22-30-00`.
+
+## Restoring backups
+
+Use `restore.sh` to restore the latest state of a backup image stack to a local directory:
+```bash
+./restore.sh <backup> <destination>
+```
+
+`backup` is the base name (full-backup image name) of a backup stack, and `destination` is the local destination directory.
+
+Use `ls.sh` to get a list of available backups.
 
 ## Accessing snapshots
 
