@@ -172,6 +172,10 @@ function finish_wip_image() {
 }
 # --
 
+# Print a list ("stack") of images based on a base image name, sorted alphabetically.
+# If a WIP image exists, it is included in the list.
+# By default, the stack is sorted oldest-to-newest, with the WIP image being the last.
+# If "reverse" is true, this order is reversed.
 function print_image_stack() {
   local base_image="${1}"
   local reverse="${2:-}"
@@ -179,13 +183,15 @@ function print_image_stack() {
   local wip_path="$(dirname "${base_image}")/${UTIL_IMAGE_WIP_SUBDIR}"
   local wip_match="${wip_path}/$(basename "${base_image}")"
 
+  # We use "ls" because it sorts alphabetically by default,
+  #  and mount order by timestamp is important for overlayfs to work.
   if [[ -n "${reverse}" ]] ; then
     reverse="--reverse"
     ls -1 "${wip_match}"* 2>/dev/null || true
   fi
-  # We use "ls" because it sorts alphabetically by default,
-  #  and mount order by timestamp is important for overlayfs to work.
+
   ls -1 ${reverse} "${base_image}"* 2>/dev/null || true
+
   if [[ -z "${reverse}" ]] ; then
     ls -1 "${wip_match}"* 2>/dev/null || true
   fi
@@ -325,15 +331,25 @@ function mount_image_stack() {
   announce "Mounting image stack for '${base_image}'"
 
   local count=0
-  local img img_file
+  local img
   local stack=""
+  local stack_size="$(print_image_stack "${base_image}"|wc -l)"
   for img in $(print_image_stack "${base_image}"); do
-    [[ -f "${img}" ]] || continue
+    [[ -f "${img}" ]] || {
+      echo "   !!! WARN: ignoring non-file '${img}'"
+      count=$(( count + 1 ))
+      continue
+    }
+
+    local img_ro="${ro}"
+    if [[ "$((count+1))" -lt "${stack_size}" ]] ; then
+      img_ro="true"
+    fi
 
     local mount_point="${image_mnt_topdir}/${count}"
-    mount_fs_image "${img}" "${mount_point}" "${ro}"
+    mount_fs_image "${img}" "${mount_point}" "${img_ro}"
 
-    img_file="$(basename "${img}")"
+    local img_file="$(basename "${img}")"
     stack="${img_file}:${stack}"
 
     local stackfile="${mount_point}/${UTIL_IMAGE_STACK_FILE}"
