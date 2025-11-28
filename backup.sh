@@ -96,7 +96,8 @@ rsync --prune-empty-dirs --archive --delete \
       --info=progress2 \
       --ignore-errors \
       --log-file "${img_basedir}/changes.txt" \
-      --inplace "${@}" "${dest}"
+      --inplace "${@%/}" "${dest}"
+               # ^^ Remove trailing "/" from paths to ensure incremental backups remain uniform
 ret="$?"
 case "$ret" in
   0)  echo "  ==> Transfer successful.";;
