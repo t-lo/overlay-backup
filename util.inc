@@ -248,7 +248,7 @@ function image_from_mountpoint() {
 # --
 
 function overlay_check_opts() {
-  local opts="${1}"
+  local opts="${@}"
 
   local len="$(echo -n "${opts}" | wc -c)"
   local maxlen="$(getconf PAGE_SIZE)"
