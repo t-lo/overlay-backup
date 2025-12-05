@@ -275,7 +275,12 @@ function _mount_overlay() {
   local upperdir="./${overlay_dir}/${UTIL_IMAGE_DATADIR}"
   local merged="./${overlay_dir}/${UTIL_IMAGE_MERGEDIR}"
   local work_dir="${overlay_dir}/${UTIL_IMAGE_WORKDIR}"
-  local opts=( "-o" "context=system_u:object_r:httpd_sys_content_t:s0" )
+  local opts=()
+
+  # Set overlay security context if SELinux is not disabled
+  if [[ "$(getenforce)" != Disabled ]] ; then
+    opts=( "-o" "context=system_u:object_r:httpd_sys_content_t:s0" )
+  fi
 
   if [[ "${ro}" == "true" ]] ; then
     opts+=( "-o" "lowerdir=${upperdir}:${lowerdirs}" )
