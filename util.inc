@@ -12,6 +12,12 @@ UTIL_IMAGE_WIP_SUBDIR=".wip"
 UTIL_IMAGE_SNAPSHOT_SEPARATOR="snapshot"
 UTIL_NETFS_MOUNTFLAG_FILE=".mount-check"
 
+# Mount command defaults; override in settings.env.
+mount_cmd_netfs=( "mount.cifs" )
+mount_cmd_fsimg=( "mount" )
+# Work around 256 bytes mountopts size limit, see example.settings.env and https://github.com/util-linux/util-linux/issues/2287
+mount_cmd_overlay=( "busybox" "mount" )
+
 function ts() {
   date --rfc-3339=seconds | sed -e 's/ /_/' -e 's/:/-/g' -e 's/+.*//'
 }
@@ -64,7 +70,7 @@ function mount_netfs() {
     echo "  Mounting net FS to '${mountpoint}'"
     mkdir -p "${mountpoint}"
     local opts=( "-o" "${mountopts}" "${uri}" "${mountpoint}" )
-    mount.cifs "${opts[@]}"
+    "${mount_cmd_netfs[@]}" "${opts[@]}"
     touch "${mountpoint}/${UTIL_NETFS_MOUNTFLAG_FILE}"
   fi
 }
@@ -96,7 +102,7 @@ function mount_fs_image() {
 
   echo "  Mount '${mount_point}'"
   mkdir -p "${mount_point}"
-  mount -o loop \
+  "${mount_cmd_fsimg[@]}" -o loop \
         ${ro} \
         -o context='system_u:object_r:httpd_sys_content_t:s0' \
         "${fs_image}" "${mount_point}"
@@ -280,7 +286,7 @@ function _mount_overlay() {
   overlay_check_opts "${opts[@]}"
 
   echo "  Overlay: '${upperdir}' :: '${lowerdirs}'"
-  mount -t overlay "${opts[@]}" "${name}" "${merged}"
+  "${mount_cmd_overlay[@]}" -t overlay "${opts[@]}" "${name}" "${merged}"
 }
 # --
 
