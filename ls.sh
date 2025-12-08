@@ -13,10 +13,8 @@ if netfs_needs_mounting "${NETFS_MOUNT}" ; then
 fi
 echo " --- File list in backup images directory '${BACKUP_IMAGES_DEST}/'"
 echo
-ls -1 "${BACKUP_IMAGES_DEST}"/ | grep -v '.mount-check'
+ls -1sh "${BACKUP_IMAGES_DEST}"/ | grep -v '.mount-check'
 echo
-echo " --- Backup usage"
-du --max-depth=1 -h "${BACKUP_IMAGES_DEST}"/
 echo " --- NETFS usage"
 df -h "${NETFS_MOUNT}/${UTIL_NETFS_MOUNTFLAG_FILE}"
 echo
