@@ -56,7 +56,7 @@ fi
 
 mount_image_stack "${base_path}" "${BACKUP_IMAGES_MOUNT}" "true" 
 
-src="$(get_backup_dir "${BACKUP_IMAGES_DEST}")"
+src="$(get_backup_dir "${BACKUP_IMAGES_MOUNT}")"
 
 cb_restore_pre "${base}" "${src}" "${dest}"
 

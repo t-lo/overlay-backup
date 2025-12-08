@@ -58,6 +58,7 @@ fi
 
 ts_start="$(ts)"
 announce "Preparing a new '${name}' backup at ${ts_start}"
+echo
 
 if [[ -n "${base}" ]] ; then
   image="$(snapshot_image_name "${base}")"
@@ -82,7 +83,7 @@ fi
 start_wip_image "${image}" "${fs_file_size}" "${BACKUP_IMAGES_DEST}"
 mount_image_stack "${base_path}" "${BACKUP_IMAGES_MOUNT}"  
 
-dest="$(get_backup_dir "${BACKUP_IMAGES_DEST}")"
+dest="$(get_backup_dir "${BACKUP_IMAGES_MOUNT}")"
 
 # --
 # Handle backup sources
@@ -111,15 +112,18 @@ echo "Sources:"
 echo " ---"
 printf "%s\n" "${src[@]}"
 echo " ---"
+echo
 
 img_basedir="$(dirname "${dest}")"
+changes_file="${img_basedir}/changes.txt"
 set +e
-rm -f "${img_basedir}/changes.txt"
+rm -f "${changes_file}"
 rsync --prune-empty-dirs --archive --delete \
-      --verbose --human-readable --whole-file \
+      --times --update --modify-window 1 \
+      --human-readable --whole-file \
       --info=progress2 \
       --ignore-errors \
-      --log-file "${img_basedir}/changes.txt" \
+      --log-file "${changes_file}" \
       --inplace "${src[@]%/}" "${dest}"
                 # ^^^^  Remove trailing "/" from paths to ensure incremental backups remain uniform
 ret="$?"
@@ -150,7 +154,9 @@ announce "Backup concluded successfully."
 echo "  Image : ${image}"
 echo "  Start : ${ts_start}"
 echo "  End   : ${ts_end}"
+echo "  Changes captured in '${changes_file}'"
+echo
 echo "  NETFS usage after backup"
 df -h "${NETFS_MOUNT}/${UTIL_NETFS_MOUNTFLAG_FILE}"
 echo
-echo
+announce "DONE"

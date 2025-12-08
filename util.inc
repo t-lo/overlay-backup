@@ -233,23 +233,22 @@ function get_merged_dir() {
 }
 # --
 
-function get_backup_dir() {
-  local image_mnt_topdir="${1}"
-
-  local latest="$(basename "$(print_mount_stack "${image_mnt_topdir}" | tail -n 1)")"
-  local base="$(full_from_snapshot_name "${latest}")"
-
-  if [[ "${base}" != "${latest}" ]] ; then
-    get_merged_dir "${BACKUP_IMAGES_MOUNT}" "${base}"
-  else
-    get_data_dir "${BACKUP_IMAGES_MOUNT}" "${base}"
-  fi
-}
-# --
-
 function image_from_mountpoint() {
   local mountpoint="$1"
   head -n1 "${mountpoint}/${UTIL_IMAGE_STACK_FILE}"
+}
+# --
+
+function get_backup_dir() {
+  local image_mnt_topdir="${1}"
+  local latest="$(image_from_mountpoint "$(print_mount_stack "${image_mnt_topdir}" | tail -n 1)")"
+  local base="$(full_from_snapshot_name "${latest}")"
+
+  if [[ "${base}" != "${latest}" ]] ; then
+    get_merged_dir "${image_mnt_topdir}"
+  else
+    get_data_dir "${image_mnt_topdir}"
+  fi
 }
 # --
 

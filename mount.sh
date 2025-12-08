@@ -38,9 +38,8 @@ fi
 
 mount_image_stack "$base_path" "${BACKUP_IMAGES_MOUNT}" "true" "${deep}"
 
-datadir="$(get_merged_dir "${BACKUP_IMAGES_MOUNT}" "${base_path}")"
 echo "==> MOUNT COMPLETE: Latest '$base' state is now available at:"
-echo -n "    "; get_backup_dir "${BACKUP_IMAGES_DEST}"
+echo -n "    "; get_backup_dir "${BACKUP_IMAGES_MOUNT}"
 echo "Run './umount.sh ${netumount} \"${base}\"' to unmount."
 
 trap "" EXIT
