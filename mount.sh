@@ -9,9 +9,12 @@ source "${workdir}/util.inc"
 source "${workdir}/settings.env"
 
 if [[ "$#" -lt 1 ]] ; then
-  echo "Usage: $0 <base-image-name> [deep]"
-  echo "Mount full image stack of <base-image-name>."
-  echo "If 'deep' is provided after the image, all snapshots' overlays will be mounted"
+  echo "Usage:"
+  echo " $0 <base-image-name> [deep]"
+  echo "    Mount full image stack of <base-image-name>."
+  echo "    If 'deep' is provided after the image, all snapshots' overlays will be mounted"
+  echo " $0 netfs"
+  echo "    Only mount the netfs."
   exit
 fi
 
@@ -30,16 +33,21 @@ netfs_needs_mounting "${NETFS_MOUNT}" || netumount=""
 
 mount_netfs "${NETFS_URI}" "${NETFS_MOUNT}" "${NETFS_MOUNTOPTS}"
 
-# Check for presence of base_path image only after NETFS was mounted.
-if [[ ! -f "${base_path}" ]] ; then
-  echo "ERROR: base '${base}' not found at '${base_path}.'"
-  exit 1
+if [[ "$base" == "netfs" ]] ; then
+  echo "==> Mount complete; netfs available at '${NETFS_MOUNT}'"
+  base=""
+else
+  # Check for presence of base_path image only after NETFS was mounted.
+  if [[ ! -f "${base_path}" ]] ; then
+    echo "ERROR: base '${base}' not found at '${base_path}.'"
+    exit 1
+  fi
+
+  mount_image_stack "$base_path" "${BACKUP_IMAGES_MOUNT}" "true" "${deep}"
+  echo "==> MOUNT COMPLETE: Latest '$base' state is now available at:"
+  echo -n "    "; get_backup_dir "${BACKUP_IMAGES_MOUNT}"
 fi
 
-mount_image_stack "$base_path" "${BACKUP_IMAGES_MOUNT}" "true" "${deep}"
-
-echo "==> MOUNT COMPLETE: Latest '$base' state is now available at:"
-echo -n "    "; get_backup_dir "${BACKUP_IMAGES_MOUNT}"
-echo "Run './umount.sh ${netumount} \"${base}\"' to unmount."
+echo "Run './umount.sh ${netumount} ${base}' to unmount."
 
 trap "" EXIT

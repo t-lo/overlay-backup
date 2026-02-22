@@ -13,6 +13,10 @@ if [[ "${1:-}" == "--netfs" ]] ; then
     return 0
   }
   shift
+  [[ "$#" -gt 0 ]] || {
+    umount_netfs "${NETFS_MOUNT}"
+    exit
+  }
 fi
 
 if [[ "$#" -lt 1 ]] ; then
