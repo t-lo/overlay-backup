@@ -19,7 +19,7 @@ Multiple snapshots can be created; snapshots will only store differences to the 
   - `backup.sh <name> [<stack-name>] -- <files...>` Create new backup containing `<files...>`.
     If `<stack-name>` is provided, it is existing backup stack to incrementally add a new backup to.
   - `restore.sh <stack-name> <dest-dir>` restores a backup to a local folder.
-  - `ls.sh` lists all existing backup stacks.
+  - `ls.sh` lists all existing backup stacks with allocated and total image file sizes.
   - `mount.sh <stack-name>` mounts a backup stack (base full backup and all incrementals) for browsing.
   - `umount.sh <stack-name>` unmounts it.
   - `prune.sh <stack-name>` deletes a backup and all dependent incremental snapshots.
@@ -135,6 +135,22 @@ If `mount.sh` mounted the network storage, use
 ./umount.sh --netfs "myhome-2025-10-19_18-55-20"
 ```
 to unmount that, too.
+
+## Efficiently copying remote file system images
+
+Since images are sparse, their maximum size will often be significantly larger than the allocated size actually used by data.
+`ls.sh` can be used to display both.
+To efficiently copy these "large" files over the network, a sparse-aware tool should be used.
+`rsync` offers this feature through a combination of `--sparse` and `--compress`:
+```bash
+rsync --inplace --whole-file --sparse  --info=progress2  --compress <source(s)> <dest>
+```
+
+E.g. for Hetzner storageBox:
+```bash
+rsync --inplace -e 'ssh -p23'  --whole-file --sparse  --info=progress2  --compress \
+      "<user>@<user>@your-storagebox.de:<base-name>/<file-pattern>*" .
+```
 
 ## Directory structure inside of file system images
 
