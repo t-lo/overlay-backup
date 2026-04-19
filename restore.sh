@@ -43,10 +43,8 @@ fi
 ts_start="$(ts)"
 announce "Starting restore of '${base}'"
 
-
 init_trap "${BACKUP_IMAGES_MOUNT}" "${NETFS_MOUNT}" "${BACKUP_IMAGES_DEST}"
 mount_netfs "${NETFS_URI}" "${NETFS_MOUNT}" "${NETFS_MOUNTOPTS}"
-
 
 base_path="$(sanitise_image_path "${base}" "${BACKUP_IMAGES_DEST}")"
 if [[ ! -f "${base_path}" ]] ; then
@@ -64,11 +62,19 @@ announce "Restoring '${src}' to '${dest}'"
 
 img_basedir="$(dirname "${dest}")"
 
+log_file="${dest}/restore.log"
+touch "${dest}/restore-start-${ts_start}"
 rsync --archive \
       --info=progress2 \
+      --human-readable --whole-file \
+      --ignore-errors --inplace \
+      --log-file "${log_file}" \
       "${src}"/* "${dest}"/
 
 cb_restore_post "${base}" "${src}" "${dest}"
+
+latest_image="$(print_image_stack "${base_path}"|tail -n1)"
+echo "$(basename "${latest_image}")" > "${dest}/restore-image.txt"
 
 ts="$(date --rfc-3339=seconds | sed -e 's/ /_/' -e 's/:/-/g' -e 's/+.*//')"
 touch "${dest}/restore-success-${ts}"
@@ -80,4 +86,5 @@ ts_end="$(ts)"
 announce "Restore concluded successfully."
 echo "  Start : ${ts_start}"
 echo "  End   : ${ts_end}"
+echo "  Details in '${log_file}'"
 echo
