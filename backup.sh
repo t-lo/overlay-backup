@@ -75,9 +75,14 @@ init_trap "${BACKUP_IMAGES_MOUNT}" "${NETFS_MOUNT}" "${BACKUP_IMAGES_DEST}"
 mount_netfs "${NETFS_URI}" "${NETFS_MOUNT}" "${NETFS_MOUNTOPTS}"
 
 base_path="$(sanitise_image_path "${base}" "${BACKUP_IMAGES_DEST}")"
-if [[ "${image}" != "${base}" && ! -f "${base_path}" ]] ; then
-  echo "ERROR: Incremental backup requested but base image '${base_path}' not found."
-  exit 1
+if [[ "${image}" != "${base}" ]] ; then
+  if [[ ! -f "${base_path}" ]] ; then
+    echo "ERROR: Incremental backup requested but base image '${base_path}' not found."
+    exit 1
+  elif ! is_base_image "${base}"; then
+    echo "ERROR: Base image '${base}' must be a base image. Snapshots are not supported."
+    exit 1
+  fi
 fi
 
 start_wip_image "${image}" "${fs_file_size}" "${BACKUP_IMAGES_DEST}"

@@ -22,6 +22,7 @@ Multiple snapshots can be created; snapshots will only store differences to the 
   - `ls.sh` lists all existing backup stacks with allocated and total image file sizes.
   - `mount.sh <stack-name>` mounts a backup stack (base full backup and all incrementals) for browsing.
   - `umount.sh <stack-name>` unmounts it.
+  - `squash.sh <stack-name>` squashes all snapshots into one new snapshot, and removes previous snapshopts.
   - `prune.sh <stack-name>` deletes a backup and all dependent incremental snapshots.
 
 ## Creating backups
@@ -165,9 +166,38 @@ Loopback-mounted file system images (either using `mount.sh` or manually) contai
  image-stack.txt - List of all snapshot images and full backup image, including the current. Most recent snapshot comes first.
 ```
 
-## Removing old directories
+## Squash intermediate snapshots
+
+`squash.sh` is provided to squash all changes from an image stack into a new snapshot, and remove all previous snapshots.
+
+For example, given the following stack
+```
+  myhome-2025-10-19_18-55-20
+  myhome-2025-10-19_18-55-20-snapshot-2025-10-19-20-30-00
+  myhome-2025-10-19_18-55-20-snapshot-2025-10-19-22-30-00
+  myhome-2025-10-19_18-55-20-snapshot-2025-10-20-10-00-00
+```
+
+squashing it via
+```bash
+./squash.sh myhome-2025-10-19_18-55-20
+```
+
+will result in
+```
+  myhome-2025-10-19_18-55-20
+  myhome-2025-10-19_18-55-20-snapshot-2026-02-20-10-00-00
+```
+(assuming that 2026-02-20 is the current date).
+
+The snapshot `myhome-2025-10-19_18-55-20-snapshot-2026-02-20-10-00-00` will include all changes of the previous 3 snapshots.
+
+**NOTE:** All transient changes (e.g. files created in `...snapshot-2025-10-19-20-30-00` and deleted in `snapshot-2025-10-20-10-00-00` **will be lost**.
+
+## Remove old backups
 
 `prune.sh` is provided to delete old backup images as well as all images that depend on these.
+It can be used on base names and snapshots.
 
 For example
 ```bash

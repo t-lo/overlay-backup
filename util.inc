@@ -48,6 +48,15 @@ function full_from_snapshot_name() {
 }
 # --
 
+function is_base_image() {
+  local img="${1}"
+  local base
+  base="$(full_from_snapshot_name "$img")"
+
+  [[ "$img" == "$base" ]]
+}
+# --
+
 function sanitise_image_path() {
   local img="$1"
   local img_store="$2"
@@ -267,9 +276,10 @@ function overlay_check_opts() {
 # --
 
 function _mount_overlay() {
-  local overlay_dir="$1"
-  local lowerdirs="$2"
-  local ro="$3"
+  local name="$1"
+  local overlay_dir="$2"
+  local lowerdirs="$3"
+  local ro="$4"
 
   local upperdir="./${overlay_dir}/${UTIL_IMAGE_DATADIR}"
   local merged="./${overlay_dir}/${UTIL_IMAGE_MERGEDIR}"
@@ -291,6 +301,17 @@ function _mount_overlay() {
 
   echo "  Overlay: '${upperdir}' :: '${lowerdirs}'"
   "${mount_cmd_overlay[@]}" -t overlay "${opts[@]}" "${name}" "${merged}"
+}
+# --
+
+function do_mount_overlay() {
+  local image_mnt_topdir="$1"
+  shift
+  (
+    set -euo pipefail
+    cd "${image_mnt_topdir}"
+    _mount_overlay "${@}"
+  )
 }
 # --
 
@@ -317,11 +338,7 @@ function mount_overlay() {
   done
   lowerdirs="${lowerdirs%:}"
 
-  (
-    set -euo pipefail
-    cd "${image_mnt_topdir}"
-    _mount_overlay "${overlay_dir}" "${lowerdirs}" "${ro}"
-  )
+  do_mount_overlay "${image_mnt_topdir}" "${name}" "${overlay_dir}" "${lowerdirs}" "${ro}"
 }
 # --
 

@@ -52,6 +52,12 @@ if [[ ! -f "${base_path}" ]] ; then
   exit 1
 fi
 
+if ! is_base_image "${base}"; then
+  echo "ERROR: Image '${base}' must be a base image. Snapshots are not supported."
+  exit 1
+fi
+
+
 mount_image_stack "${base_path}" "${BACKUP_IMAGES_MOUNT}" "true" 
 
 src="$(get_backup_dir "${BACKUP_IMAGES_MOUNT}")"
