@@ -10,14 +10,32 @@ source "${scriptdir}/settings.env"
 # --
 
 function usage() {
-  echo "$0 <base>"
+  echo "$0 [--keep] <base>"
   echo "  Squash all incremental backups of <base> into one new incremental backup."
-  echo "  After squashing succeeded, remove all previous incremental backups."
-
+  echo "  After squashing succeeded and if --keep was not given, remove all previous"
+  echo "  incremental backups."
+  echo
+  echo "   --keep             Keep previous incremental backups"
 }
 # --
 
-base="${1:-}"
+keep="false"
+base=""
+
+while [[ $# -ne 0 ]] ; do
+  case "$1" in
+    --keep) keep="true";;
+    *) if [[ -n "$base" ]] ; then
+         echo "ERROR: Spurious argument '$1'."
+         usage
+         exit 1
+       fi
+       base="$1"
+       ;;
+  esac
+  shift
+done
+
 if [[ -z "$base" ]] ; then
   usage
   exit 0
@@ -55,7 +73,7 @@ fi
 # Mounting
 
 # Mount the stack before creating a WIP image to prevent WIP getting the merged overlay mounted.
-mount_image_stack "${base_path}" "${BACKUP_IMAGES_MOUNT}"  
+mount_image_stack "${base_path}" "${BACKUP_IMAGES_MOUNT}" true
 src="$(get_backup_dir "${BACKUP_IMAGES_MOUNT}")"
 
 image="$(snapshot_image_name "${base}")"
@@ -104,13 +122,15 @@ touch "$(dirname "${dest}")/create-success-${ts}"
 umount_image_stack "${BACKUP_IMAGES_MOUNT}"
 finish_wip_image "${image}" "${BACKUP_IMAGES_DEST}"
 
-echo
-announce "Removing all previous snapshots."
-echo
-for s in "${snapshots[@]}"; do
-  s_file="$(sanitise_image_path "${s}" "${BACKUP_IMAGES_DEST}")"
-  rm -v "${s_file}"
-done
+if ! "$keep"; then
+  echo
+  announce "Removing all previous snapshots."
+  echo
+  for s in "${snapshots[@]}"; do
+    s_file="$(sanitise_image_path "${s}" "${BACKUP_IMAGES_DEST}")"
+    rm -v "${s_file}"
+  done
+fi
 
 echo
 announce "Suqash successful."
