@@ -48,7 +48,7 @@ mount_netfs "${NETFS_URI}" "${NETFS_MOUNT}" "${NETFS_MOUNTOPTS}"
 
 base_path="$(sanitise_image_path "${base}" "${BACKUP_IMAGES_DEST}")"
 if [[ ! -f "${base_path}" ]] ; then
-  echo "ERROR: Incremental backup requested but base image '${base_path}' not found."
+  echo "ERROR: Base image '${base_path}' not found."
   exit 1
 fi
 
@@ -56,7 +56,6 @@ if ! is_base_image "${base}"; then
   echo "ERROR: Image '${base}' must be a base image. Snapshots are not supported."
   exit 1
 fi
-
 
 mount_image_stack "${base_path}" "${BACKUP_IMAGES_MOUNT}" "true" 
 
