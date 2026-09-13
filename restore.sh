@@ -7,16 +7,11 @@ set -euo pipefail
 scriptdir="$(cd "$(dirname "$0")"; pwd)"
 source "${scriptdir}/util.inc"
 
-function cb_restore_pre()  { true; }
-function cb_restore_post() { true; }
-source "${scriptdir}/settings.env"
-
-# --
-
 function usage() {
-  echo "$0 <base> <dest>"
+  echo "$0 [--settings <file>] <base> <dest>"
   echo "  Restore FS image backup stack <base> to <dest>."
   echo "  Stack <base> must exist in the backup, and destination directory <dest> must exist locally."
+  settings_usage
 }
 # --
 
@@ -24,10 +19,13 @@ function usage() {
 # Process command line arguments
 #
 
-base="${1:-}"
-dest="${2:-}"
+parse_cmdl 2 "${@}" || { usage; exit 1; }
+
+base="${ARGS[0]:-}"
+dest="${ARGS[1]:-}"
 
 if [[ -z "$base" ]] ; then
+  echo "ERROR: base image name is missing."
   usage
   exit 0
 fi

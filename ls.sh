@@ -5,7 +5,13 @@ set -euo pipefail
 
 workdir="$(cd "$(dirname "$0")"; pwd)"
 source "${workdir}/util.inc"
-source "${workdir}/settings.env"
+
+function usage() {
+  echo "$0 [--settings <file>]"
+  echo "  List all backup stacks, their file size, and their actual disk usage."
+}
+
+parse_cmdl 0 "${@}" || { usage; exit 1; }
 
 if netfs_needs_mounting "${NETFS_MOUNT}" ; then
   trap "umount_netfs '${NETFS_MOUNT}'" EXIT

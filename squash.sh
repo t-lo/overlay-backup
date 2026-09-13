@@ -5,33 +5,33 @@ set -euo pipefail
 
 scriptdir="$(cd "$(dirname "$0")"; pwd)"
 source "${scriptdir}/util.inc"
-source "${scriptdir}/settings.env"
 
 # --
 
 function usage() {
-  echo "$0 [--keep] <base>"
+  echo "$0 [--settings <file>] [--keep] <base>"
   echo "  Squash all incremental backups of <base> into one new incremental backup."
   echo "  After squashing succeeded and if --keep was not given, remove all previous"
   echo "  incremental backups."
   echo
-  echo "   --keep             Keep previous incremental backups"
+  echo "   --keep              Keep previous incremental backups"
+  settings_usage
 }
 # --
 
-keep="false"
-base=""
+parse_cmdl 1 "${@}" || { usage; exit 1; }
 
+base="${ARGS[0]:-}"
+if [[ -z "$base" ]] ; then
+  echo "ERROR: base image name is missing."
+  usage
+  exit 0
+fi
+
+keep="false"
 while [[ $# -ne 0 ]] ; do
   case "$1" in
     --keep) keep="true";;
-    *) if [[ -n "$base" ]] ; then
-         echo "ERROR: Spurious argument '$1'."
-         usage
-         exit 1
-       fi
-       base="$1"
-       ;;
   esac
   shift
 done

@@ -4,7 +4,7 @@ Simple backup automation based on OverlayFS.
 
 Backups are stored on network storage (e.g. Hetzner StorageBox) as _file system images_ (ext4).
 Using file system images works around common limitations of network storage.
-This also reduces IOPS load on the storage server, as file system metadata is handled client side - improving performance.
+This also reduces IOPS load on the storage server, as file system metadata is handled client side, improving performance - sometimes significantly.
 
 File system images are loop-back mounted on temporary directories on the host during backup creation.
 The images can also be mounted for introspecting backups interactively, and for restore operations.
@@ -15,9 +15,11 @@ Multiple snapshots can be created; snapshots will only store differences to the 
 ## Basics
 
 1. `cp example.settings.env settings.env`, edit defaults to your needs, and add network storage information.
+  - Most importantly, set `BASENAME` to the desired base name of your backups on the backup storage.
+  - You can use multiple settings files for multiple backups and use the `--settings` command line parameter accordingly.
 2. The commands:
-  - `backup.sh <name> [<stack-name>] -- <files...>` Create new backup containing `<files...>`.
-    If `<stack-name>` is provided, it is existing backup stack to incrementally add a new backup to.
+  - `backup.sh [<stack-name>]` Create new backup from the configuration in `settings.env`.
+    If `<stack-name>` is provided, it is an existing backup stack to incrementally add a new snapshot backup to.
   - `restore.sh <stack-name> <dest-dir>` restores a backup to a local folder.
   - `ls.sh` lists all existing backup stacks with allocated and total image file sizes.
   - `mount.sh <stack-name>` mounts a backup stack (base full backup and all incrementals) for browsing.
@@ -25,13 +27,33 @@ Multiple snapshots can be created; snapshots will only store differences to the 
   - `squash.sh <stack-name>` squashes all snapshots into one new snapshot, and removes previous snapshopts.
   - `prune.sh <stack-name>` deletes a backup and all dependent incremental snapshots.
 
+### `settings.env`
+
+This config file defines all information on a backup, including
+- Base name
+- source files and directories
+- destination network filesystem
+- maximum size of a full backup and a snapshop backup file
+- optional pre- and post- backup and restore callbacks
+  (e.g. to dump databases of service being backed up, to be included in the backup)
+
+**It is often feasible to maintain multiple settings files, for multiple services.**
+The `--settings <file>` command line option, which is supported by all scripts, can be used to determine which setting to use.
+The pattern `settings.env*` is ignored by git to prevent accidental check ins of sensitive information.
+
 ## Creating backups
 
-Let's create a backup with base name "myhome" of a user's home directory:
-```bash
-./backup.sh myhome -- ~/
-```
-Note the `--` delimiter between options to `backup.sh` and path(s) / files we want to back up.
+Let's create a full backup with base name "myhome" of user `jens`'s home directory.
+
+- first, we edit `settings.env`, and set
+  - `BASENAME=myhome`
+  - `backup_sources=/home/jens`
+  - the netfs configuration (remote server and password)
+    - alternatively, uncomment the `mkdir -p ...` line to skip netfs mounting
+- Now we can kick off a backup:
+  ```bash
+  ./backup.sh
+  ```
 
 This will
 
@@ -45,11 +67,14 @@ This will
 In fact, the new backup file will be created at a temporary place on the network storage, and only moved into place when finished successfully.
 This prevents "stale" partial backup files and will ensure that we don't mount filesystem images that are currently being written to.
 
+
+### Create an incremental backup, or "snapshot"
+
 Now that we have a full back-up, we can create snapshots.
 Let's assume the name of our full back-up is `myhome-2025-10-19_18-55-20`.
 We supply it to the backup script to create an incremental snapshot:
 ```bash
-./backup.sh myhome myhome-2025-10-19_18-55-20 -- ~/
+./backup.sh myhome-2025-10-19_18-55-20
 ```
 
 This will do the same preparation / cleanup discussed above, but the backup will be incremental:
@@ -59,44 +84,56 @@ This will do the same preparation / cleanup discussed above, but the backup will
 
 We can continue and create more snapshots using the same command:
 ```bash
-./backup.sh myhome myhome-2025-10-19_18-55-20 -- ~/
+./backup.sh myhome-2025-10-19_18-55-20
 ```
 Note that only the changes to the most recent _snapshot_ are backed up.
 
-After a while, we have a stack of base + snapshots on the network storage, e.g.
+## Listing backups, space used, and space remaining
+
+Use `ls.sh` to get a list of available backups.
+```bash
+ --- File list in backup images directory '/mnt/backup/myhome'
+
+total 12G
+8.1G -rwxr-xr-x 1 root root 10G Sep 1 14:46 myhome-2025-10-19_18-55-20
+ 55M -rwxr-xr-x 1 root root 1G Sep  2 08:59 myhome-2025-10-19_18-55-20-snapshot-2025-10-19-20-30-00
+ 10M -rwxr-xr-x 1 root root 1G Sep  3 03:04 myhome-2025-10-19_18-55-20-snapshot-2025-10-19-22-30-00
+312M -rwxr-xr-x 1 root root 1G Sep  4 03:03 myhome-2025-10-19_18-55-20-snapshot-2025-10-20-10-00-00
+
+ --- NETFS usage
+Filesystem                           Size  Used Avail Use% Mounted on
+//XXXXXX.your-storagebox.de/backup  1.0T  874G  151G  86% /mnt/backup/myhome
 ```
-  myhome-2025-10-19_18-55-20
-  myhome-2025-10-19_18-55-20-snapshot-2025-10-19-20-30-00
-  myhome-2025-10-19_18-55-20-snapshot-2025-10-19-22-30-00
-  myhome-2025-10-19_18-55-20-snapshot-2025-10-20-10-00-00
-  ...
-```
-Each of the snapshots only stores differences to the previous snapshot, e.g. `myhome-2025-10-19_18-55-20-snapshot-2025-10-20-10-00-00` only holds the delta to `myhome-2025-10-19_18-55-20-snapshot-2025-10-19-22-30-00`.
+The listing shows a full backup and 5 incremental snapshots.
+Each of the snapshots only stores differences to the previous snapshot.
+For example,
+`myhome-2025-10-19_18-55-20-snapshot-2025-10-19-22-30-00`
+only holds the delta to
+`myhome-2025-10-19_18-55-20-snapshot-2025-10-19-20-30-00`.
+
+In the file listing, the actual size (bytes on disk) comes first.
+Then, after ownership and access bits, the logical (max) size of the sparse file.
+For disk usage, the first (actual) size is important.
+Lastly, the remote storage's total size, used, and free space are printed.
+This may differ from storage space occupied by this particular backup if the storage is used for other purposes too (e.g. multiple backups with different basenames).
 
 ## Restoring backups
 
-Use `restore.sh` to restore the latest state of a backup image stack to a local directory:
-```bash
-./restore.sh <backup> <destination>
-```
-
-`<backup>` is the base name (full-backup image name) of a backup stack, and `destination` is the local destination directory.
-
-Use `ls.sh` to get a list of available backups.
+- Use `restore.sh` to restore the latest state of a backup image stack to a local directory:
+  ```bash
+  ./restore.sh <backup> <destination>
+  ```
+  `<backup>` is the base name (full-backup image name) of a backup stack, and `destination` is the local destination directory.
+- Following our example from above, restore using:
+  ```bash
+  ./restore.sh myhome-2025-10-19_18-55-20 /home/jens/restored-home
+  ```
+Note that even though the base name is used, the full stack including the latest snapshot will be restored.
 
 ## Accessing snapshots
 
 Automation provides convenience scripts to list backups and to access backed up data.
-- `ls.sh` accesses the network share and lists all existing full backups and snapshots.
-- `mount.sh` mounts a full "backup stack" to access data, `umount.sh` removes the mounts.
-
-Based on the example above, `ls.sh` will return:
-```
-  myhome-2025-10-19_18-55-20
-  myhome-2025-10-19_18-55-20-snapshot-2025-10-19-20-30-00
-  myhome-2025-10-19_18-55-20-snapshot-2025-10-19-22-30-00
-  myhome-2025-10-19_18-55-20-snapshot-2025-10-20-10-00-00
-```
+`mount.sh` mounts a full "backup stack" to access data, `umount.sh` removes the mounts.
 
 `mount.sh` takes a "full back-up" name as its argument and will mount the whole image stack, i.e. full backup and all incremental snapshots.
 It uses a temporary directory for its mounts.
