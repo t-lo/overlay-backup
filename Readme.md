@@ -91,18 +91,16 @@ Note that only the changes to the most recent _snapshot_ are backed up.
 ## Listing backups, space used, and space remaining
 
 Use `ls.sh` to get a list of available backups.
+It supports `--usage`, `--latest`, --base`, and `--nostats` flags (aside `--settings`).
+
+In its simplest form, it will print all backup images:
 ```bash
  --- File list in backup images directory '/mnt/backup/myhome'
 
-total 12G
 8.1G -rwxr-xr-x 1 root root 10G Sep 1 14:46 myhome-2025-10-19_18-55-20
  55M -rwxr-xr-x 1 root root 1G Sep  2 08:59 myhome-2025-10-19_18-55-20-snapshot-2025-10-19-20-30-00
  10M -rwxr-xr-x 1 root root 1G Sep  3 03:04 myhome-2025-10-19_18-55-20-snapshot-2025-10-19-22-30-00
 312M -rwxr-xr-x 1 root root 1G Sep  4 03:03 myhome-2025-10-19_18-55-20-snapshot-2025-10-20-10-00-00
-
- --- NETFS usage
-Filesystem                           Size  Used Avail Use% Mounted on
-//XXXXXX.your-storagebox.de/backup  1.0T  874G  151G  86% /mnt/backup/myhome
 ```
 The listing shows a full backup and 5 incremental snapshots.
 Each of the snapshots only stores differences to the previous snapshot.
@@ -114,8 +112,37 @@ only holds the delta to
 In the file listing, the actual size (bytes on disk) comes first.
 Then, after ownership and access bits, the logical (max) size of the sparse file.
 For disk usage, the first (actual) size is important.
-Lastly, the remote storage's total size, used, and free space are printed.
+
+By passing the `--usage` flag, the remote storage's total size, used, and free space are printed.
 This may differ from storage space occupied by this particular backup if the storage is used for other purposes too (e.g. multiple backups with different basenames).
+```
+ --- NETFS usage
+Filesystem                           Size  Used Avail Use% Mounted on
+//XXXXXX.your-storagebox.de/backup  1.0T  874G  151G  86% /mnt/backup/myhome
+```
+
+`--nostats` suppresses size and access output and prints plain file names instead:
+```bash
+ --- File list in backup images directory '/mnt/backup/myhome'
+
+myhome-2025-10-19_18-55-20
+myhome-2025-10-19_18-55-20-snapshot-2025-10-19-20-30-00
+myhome-2025-10-19_18-55-20-snapshot-2025-10-19-22-30-00
+myhome-2025-10-19_18-55-20-snapshot-2025-10-20-10-00-00
+```
+
+`--latest` and `--base` further refine what to print.
+`--latest` only prints the most recent backup image stack (both base and all snapshots).
+`--base` only prints base images.
+The flags can be combined to print the name of the most recent base image,
+which is handy for passing it to `backup.sh` to generate a new snapshot
+backup image.
+
+Lastly, all non-essential output is directed to STDERR; only the file listing goes to STDOUT.
+To determine the last full backup name in a script, use
+```
+./ls.sh --nostats --base --latest 2>/dev/null
+```
 
 ## Restoring backups
 

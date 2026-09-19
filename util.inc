@@ -75,9 +75,9 @@ function parse_cmdl() {
         ;;
       *)
         if [[ "$argc" -le 0 ]]; then
-          echo "ERROR: Spurious positional argument '$1'."
-          echo "Full command line was: '$0 ${cmdline}'"
-          echo "USAGE"
+          echo "ERROR: Spurious positional argument '$1'." >&2
+          echo "Full command line was: '$0 ${cmdline}'" >&2
+          echo "USAGE" >&2
           usage
           exit 1
           argc=$((argc-1))
@@ -88,7 +88,7 @@ function parse_cmdl() {
   done
 
   if ! [[ -f "${settings_file}" ]]; then
-    echo "Error: Unable to open settings file '${settings_file}'"
+    echo "Error: Unable to open settings file '${settings_file}'" >&2
     return 1
   fi
 
@@ -145,7 +145,7 @@ function mount_netfs() {
   local mountopts="${3}"
 
   if netfs_needs_mounting "${mountpoint}" ; then
-    echo "  Mounting net FS to '${mountpoint}'"
+    echo "  Mounting net FS to '${mountpoint}'" >&2
     mkdir -p "${mountpoint}"
     local opts=( "-o" "${mountopts}" "${uri}" "${mountpoint}" )
     "${mount_cmd_netfs[@]}" "${opts[@]}"
@@ -158,11 +158,11 @@ function umount_netfs() {
   local mount_point="$1"
 
   if mountpoint -q "${mount_point}"; then
-    echo "  Syncing and unmounting NETFS '${mount_point}'"
+    echo "  Syncing and unmounting NETFS '${mount_point}'" >&2
     sync --file-system "${mount_point}"/.*
     umount_loop "${mount_point}"
   else
-    echo "  NETFS '${mount_point}' not mounted"
+    echo "  NETFS '${mount_point}' not mounted" >&2
   fi
 }
 # --
@@ -178,7 +178,7 @@ function mount_fs_image() {
     ro=""
   fi
 
-  echo "  Mount '${mount_point}'"
+  echo "  Mount '${mount_point}'" >&2
   mkdir -p "${mount_point}"
   "${mount_cmd_fsimg[@]}" -o loop \
         ${ro} \
@@ -188,7 +188,7 @@ function mount_fs_image() {
   function check_create_dir() {
     local d="$1"
     if [[ ! -d "${d}" ]] ; then
-      echo "    $(basename "${d}") missing in image; creating it."
+      echo "    $(basename "${d}") missing in image; creating it." >&2
       mkdir -p "${d}"
     fi
   }
@@ -203,10 +203,10 @@ function umount_loop() {
   local mount_point="$1"
 
   # Loop until transient "device busy" disappears
-  umount "${mount_point}" || echo "    ...retrying in 1s"
+  umount "${mount_point}" || echo "    ...retrying in 1s" >&2
   while mountpoint -q "${mount_point}"; do
     sleep 1
-    umount "${mount_point}" || echo "    ...retrying in 1s"
+    umount "${mount_point}" || echo "    ...retrying in 1s" >&2
   done
 }
 # --
@@ -215,7 +215,7 @@ function umount_sync() {
   local mnt_dir="$1"
 
   if mountpoint -q "${mnt_dir}" ; then
-    echo "  Syncing and unmounting '${mnt_dir}'"
+    echo "  Syncing and unmounting '${mnt_dir}'" >&2
     sync --file-system "${mnt_dir}"/*
     umount_loop "${mnt_dir}"
   fi
@@ -236,7 +236,7 @@ function start_wip_image() {
   mkdir -p "${dest_path}"
   local image_path="${dest_path}/${filename}"
 
-  echo "  Creating WIP FS image '${image_path}'"
+  echo "  Creating WIP FS image '${image_path}'" >&2
   dd of="${image_path}" bs="${filesize}" seek=1 count=0
   mkfs.ext4 -m0 "${image_path}"
 }
@@ -250,7 +250,7 @@ function finish_wip_image() {
   local src=${wip_dir}"/${filename}"
   local dest="${images_storage_dir}/${filename}"
 
-  echo "  Finishing backup image"
+  echo "  Finishing backup image" >&2
   mv "${src}" "${dest}"
   rmdir "${wip_dir}"
 }
@@ -337,8 +337,8 @@ function overlay_check_opts() {
   local maxlen="$(getconf PAGE_SIZE)"
 
   if [[ "${len}" -gt "${maxlen}" ]] ; then
-    echo "ERROR: overlayfs mount options command line is longer than PAGE_SIZE"
-    echo " ('${len}' vs. '${maxlen}'). Overlayfs mount would fail."
+    echo "ERROR: overlayfs mount options command line is longer than PAGE_SIZE" >&2
+    echo " ('${len}' vs. '${maxlen}'). Overlayfs mount would fail." >&2
     exit 1
   fi
 }
@@ -368,7 +368,7 @@ function _mount_overlay() {
 
   overlay_check_opts "${opts[@]}"
 
-  echo "  Overlay: '${upperdir}' :: '${lowerdirs}'"
+  echo "  Overlay: '${upperdir}' :: '${lowerdirs}'" >&2
   "${mount_cmd_overlay[@]}" -t overlay "${opts[@]}" "${name}" "${merged}"
 }
 # --
@@ -424,7 +424,7 @@ function mount_image_stack() {
   local ro="${3:-}"
   local deep="${4:-}"
 
-  announce "Mounting image stack for '${base_image}'"
+  announce "Mounting image stack for '${base_image}'" >&2
 
   local count=0
   local img
@@ -432,7 +432,7 @@ function mount_image_stack() {
   local stack_size="$(print_image_stack "${base_image}"|wc -l)"
   for img in $(print_image_stack "${base_image}"); do
     [[ -f "${img}" ]] || {
-      echo "   !!! WARN: ignoring non-file '${img}'"
+      echo "   !!! WARN: ignoring non-file '${img}'" >&2
       count=$(( count + 1 ))
       continue
     }
@@ -450,8 +450,8 @@ function mount_image_stack() {
 
     local stackfile="${mount_point}/${UTIL_IMAGE_STACK_FILE}"
     if [[ "${ro}" != "true" && ! -f "${stackfile}" ]] ; then
-      echo "  Image stack info '${stackfile}' not found, adding."
-      echo -e "${stack//:/\\n}" >  "${stackfile}"
+      echo "  Image stack info '${stackfile}' not found, adding." >&2
+      echo -e "${stack//:/\\n}" >  "${stackfile}" >&2
     fi
 
     count=$(( count + 1 ))
@@ -489,7 +489,7 @@ function cleanup() {
   local netfs_mount="${2:-}"
   local images_storage_dir="${3:-}"
 
-  announce "Cleaning up"
+  announce "Cleaning up" >&2
 
   set +e
 
@@ -500,7 +500,7 @@ function cleanup() {
 
   local wip_dir="${images_storage_dir}/${UTIL_IMAGE_WIP_SUBDIR}"
   if [[ -n "${images_storage_dir}" && -d "${wip_dir}" ]] ; then
-    echo "  Removing incomplete / WIP image dir '${wip_dir}'"
+    echo "  Removing incomplete / WIP image dir '${wip_dir}'" >&2
     rm -vrf "${wip_dir}"
   fi
 
@@ -512,7 +512,7 @@ function cleanup() {
 
   set -e
 
-  echo "All done."
+  echo "All done." >&2
 }
 # --
 
