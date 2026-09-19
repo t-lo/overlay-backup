@@ -1,5 +1,5 @@
 #!/bin/bash
-# vim:ts=2:et:sw=2:syn=bash
+# vim: ts=2 et sw=2 syn=bash filetype=bash
 #
 
 UTIL_IMAGE_DATADIR="data"
@@ -18,6 +18,14 @@ mount_cmd_fsimg=( "mount" )
 # Work around 256 bytes mountopts size limit, see example.settings.env and https://github.com/util-linux/util-linux/issues/2287
 mount_cmd_overlay=( "busybox" "mount" )
 
+# Defaults for callbacks
+function cb_backup_pre()  { true; }
+function cb_backup_post() { true; }
+function cb_restore_pre()  { true; }
+function cb_restore_post() { true; }
+backup_sources=()
+
+
 function ts() {
   date --rfc-3339=seconds | sed -e 's/ /_/' -e 's/:/-/g' -e 's/+.*//'
 }
@@ -25,6 +33,67 @@ function ts() {
 
 function announce() {
   echo "#### $(ts) ####  ${@}"
+}
+# --
+
+function settings_usage() {
+  echo "   --settings <file> - Use settings file <file>."
+  echo "                       If omitted 'settings.env' in the same directory as '$0' is used."
+}
+# --
+# override usage if none is implemented
+function usage() {
+  echo "$0 [--settings <file>]"
+  settings_usage
+}
+# --
+
+# Simple command line parser.
+# We only support flags (--something w/o arguments) and positional parameters.
+ARGS=()
+SETTINGS_FILE=""
+function parse_cmdl() {
+  local argc="$1"
+  shift
+  local cmdline="${@}"
+
+  local scriptdir="$(cd "$(dirname "$0")"; pwd)"
+  local settings_file="${scriptdir}/settings.env"
+
+  while [[ "$#" -gt 0 ]] ; do
+    case "$1" in
+      --settings)
+        shift
+        settings_file="${1:-}"
+        ;;
+      -h|--help)
+        usage
+        exit
+        ;;
+      --*)
+        true
+        ;;
+      *)
+        if [[ "$argc" -le 0 ]]; then
+          echo "ERROR: Spurious positional argument '$1'."
+          echo "Full command line was: '$0 ${cmdline}'"
+          echo "USAGE"
+          usage
+          exit 1
+          argc=$((argc-1))
+        fi
+        ARGS+=( "$1" )
+    esac
+    shift || true
+  done
+
+  if ! [[ -f "${settings_file}" ]]; then
+    echo "Error: Unable to open settings file '${settings_file}'"
+    return 1
+  fi
+
+  source "${settings_file}"
+  SETTINGS_FILE="${settings_file}"
 }
 # --
 

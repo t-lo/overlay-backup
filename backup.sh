@@ -1,63 +1,33 @@
 #!/bin/bash
-# vim: ts=2 et sw=2
+# vim: ts=2 et sw=2 syn=bash
 
 set -euo pipefail
 
 scriptdir="$(cd "$(dirname "$0")"; pwd)"
 source "${scriptdir}/util.inc"
 
-function cb_backup_pre()  { true; }
-function cb_backup_post() { true; }
-backup_sources=()
-source "${scriptdir}/settings.env"
-
 # --
 
 function usage() {
-  echo "$0 <name> [<base>]  -- <src> [<src2>] ..."
-  echo "  Create a new FS image file backup of <name>."
-  echo "   If <base> was provided, create a new incremental backup based on stack <base>."
-  echo "  Everything after the '--' separator will be backed up."
-  echo "  For more complext backups with pre- and post hook functions, 'settings.env' may"
-  echo "  be customised accordingly. Also allows defining backup sources."
-  echo "  Check out the readme and 'example.settings.env' for more information."
-
+  echo "$0 [--settings <file>] [<base>]"
+  echo "  Create a new FS image file backup based on the settings in 'settings.env'."
+  echo "   <base>            - Create a new incremental backup based on stack <base>."
+  echo "                       If omitted, a new full backup is created."
+  settings_usage
+  echo "  The settings file defines what to back up; it is sourced by $0."
+  echo "  Optionally, pre- and post-backup callbacks may be defined there, too."
+  echo "  Check out 'example.settings.env' for more information."
 }
 # --
 
-#
-# Process command line arguments
-#
-
-name=""
-base=""
-cmdline="${@}"
-while [[ "$#" -gt 0 ]] ; do
-  case "$1" in
-    --) shift; break;;
-    *)  if [[ -z "${name}" ]] ; then
-          name="$1"
-        elif [[ -z "${base}" ]] ; then
-          base="$1"
-        else
-          echo "ERROR: Spurious positional argument '$1'. Full command line: '${cmdline}'"
-          usage
-          exit 1
-        fi
-  esac
-  shift
-done
-
-if [[ -z "$name" ]] ; then
-  usage
-  exit 0
-fi
+parse_cmdl 1 "${@}" || { usage; exit 1; }
+base="${ARGS[0]:-}"
 
 # --
 # image prep
 
 ts_start="$(ts)"
-announce "Preparing a new '${name}' backup at ${ts_start}"
+announce "Preparing a new '${BASENAME}' backup at ${ts_start}"
 echo
 
 if [[ -n "${base}" ]] ; then
@@ -65,7 +35,7 @@ if [[ -n "${base}" ]] ; then
   fs_file_size="${SNAPSHOT_BACKUP_FSFILE_SIZE}"
   echo "  Incremental backup to '${image}', image stack '${base}'"
 else
-  image="$(full_image_name "${name}")"
+  image="$(full_image_name "${BASENAME}")"
   base="${image}"
   fs_file_size="${FULL_BACKUP_FSFILE_SIZE}"
   echo "  Full backup to '${image}'"
@@ -93,7 +63,7 @@ dest="$(get_backup_dir "${BACKUP_IMAGES_MOUNT}")"
 # --
 # Handle backup sources
 
-cb_backup_pre "${name}" "${base}" "${image}" "${dest}" "--" "${@:-}"
+cb_backup_pre "${BASENAME}" "${base}" "${image}" "${dest}" "--" "${@:-}"
 
 src=()
 if [[ -n "${backup_sources[@]}" ]] ; then
@@ -147,7 +117,7 @@ cat "${img_basedir}/${UTIL_IMAGE_STACK_FILE}"
 echo "  ---"
 
 
-cb_backup_post "${name}" "${base}" "${image}" "${dest}"
+cb_backup_post "${BASENAME}" "${base}" "${image}" "${dest}"
 
 umount_image_stack "${BACKUP_IMAGES_MOUNT}"
 finish_wip_image "${image}" "${BACKUP_IMAGES_DEST}"

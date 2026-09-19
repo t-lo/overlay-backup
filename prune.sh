@@ -5,9 +5,14 @@ set -euo pipefail
 
 workdir="$(cd "$(dirname "$0")"; pwd)"
 source "${workdir}/util.inc"
-source "${workdir}/settings.env"
 
-prune="$1"
+parse_cmdl 1 "${@}"
+
+prune="${ARGS[0]:-}"
+if [[ -z "$prune" ]] ; then
+  echo "ERROR: base image name missing."
+  exit 1
+fi
 prune_path="$(sanitise_image_path "${prune}" "${BACKUP_IMAGES_DEST}")"
 
 if netfs_needs_mounting "${NETFS_MOUNT}" ; then

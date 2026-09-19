@@ -6,29 +6,43 @@ set -euo pipefail
 
 workdir="$(cd "$(dirname "$0")"; pwd)"
 source "${workdir}/util.inc"
-source "${workdir}/settings.env"
 
-if [[ "${1:-}" == "--netfs" ]] ; then
-  function netfs_needs_mounting() {
-    return 0
-  }
-  shift
-  [[ "$#" -gt 0 ]] || {
-    umount_netfs "${NETFS_MOUNT}"
-    exit
-  }
-fi
-
-if [[ "$#" -lt 1 ]] ; then
-  echo "Usage: $0 [--netfs] <base-image-name>"
+function usage() {
+  echo "Usage: $0 [--settings <file>] [--netfs] <base-image-name>"
   echo "Unmount image stack of <base-image-name>, and optionally the network file system"
+  echo "Note that you can use '--netfs' w/o '<base-image-name> to ONLY unmount the netfs. Potentially dangerous."
+  settings_usage
+}
+# --
+
+parse_cmdl 1 "${@}" || { usage; exit 1; }
+
+report_base_error="true"
+while [[ $# -ne 0 ]] ; do
+  case "$1" in
+    --netfs)
+      report_base_error="false"
+      function netfs_needs_mounting() {
+        return 0
+      }
+    ;;
+  esac
+  shift
+done
+
+base="${ARGS[0]:-}"
+
+init_trap "${BACKUP_IMAGES_MOUNT}" "${NETFS_MOUNT}"
+
+if [[ -z "$base" ]]; then
+  if $report_base_error ; then
+    echo "ERROR: base image name missing"
+    usage
+  fi
   exit
 fi
 
-base="$1"
 base_path="$(sanitise_image_path "${base}" "${BACKUP_IMAGES_DEST}")"
-
-init_trap "${BACKUP_IMAGES_MOUNT}" "${NETFS_MOUNT}"
 
 if [[ ! -f "${base_path}" ]] ; then
   echo "ERROR: backup image '${base_path}' not found."
